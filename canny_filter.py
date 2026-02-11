@@ -2,16 +2,14 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-def convert(img, device="cpu"):
 
-    tensor = img
-    inverted = tensor.mean(0).unsqueeze(0).unsqueeze(0).to(device) / 256.0
+def convert(img, device="cpu"):
 
     gaussian_blur = torch.tensor([
         [1, 2, 1],
         [2, 4, 2],
         [1, 2, 1],
-    ], dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
+    ], dtype=torch.float32)
 
     big_blur = torch.tensor([
         [1, 4, 6, 4, 1],
@@ -19,19 +17,26 @@ def convert(img, device="cpu"):
         [6,24,36,24, 6],
         [4,16,24,16, 4],
         [1, 4, 6, 4, 1],
-    ], dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
+    ], dtype=torch.float32)
 
     sobel_x = torch.tensor([
         [-1, 0, 1],
         [-2, 0, 2],
         [-1, 0, 1],
-    ], dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
+    ], dtype=torch.float32)
 
     sobel_y = torch.tensor([
         [-1, -2, -1],
         [0, 0, 0],
         [1, 2, 1],
-    ], dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
+    ], dtype=torch.float32)
+
+    gaussian_blur = gaussian_blur.unsqueeze(0).unsqueeze(0).to(device)
+    big_blur = big_blur.unsqueeze(0).unsqueeze(0).to(device)
+    sobel_x = sobel_x.unsqueeze(0).unsqueeze(0).to(device)
+    sobel_y = sobel_y.unsqueeze(0).unsqueeze(0).to(device)
+
+    inverted = img.mean(0).unsqueeze(0).unsqueeze(0).to(device) / 256.0
 
     blurred = F.conv2d(inverted, gaussian_blur, padding=1)
     sharp_x = F.conv2d(blurred, sobel_x, padding=1, groups=1) 

@@ -19,7 +19,7 @@ print(tensor.requires_grad)
 
 img = convert(tensor, device=device)
 
-print(img.grad)
+print(img.requires_grad)
 
 tensor = img
 
@@ -28,7 +28,7 @@ print(tensor.shape)
 #tensor = torch.ones_like(tensor) - tensor
 
 
-tensor = tensor.squeeze(0).squeeze(0)
+tensor = tensor.squeeze(0).squeeze(0).detach()
 plt.imshow(tensor, cmap="grey")
 plt.show()
 
