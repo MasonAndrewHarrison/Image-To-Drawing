@@ -1,7 +1,44 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
+from nms import non_maximum_suppression
 
+def angle_rounder(theda):
+    if theda >= torch.tensor([0], device=device) and theda <= torch.tensor([22.5], device=device):
+        return 0
+    elif theda > torch.tensor([22.5], device=device) and theda <= torch.tensor([67.5], device=device):
+        return 45
+    elif theda > torch.tensor([67.5], device=device) and theda <= torch.tensor([112.5], device=device):
+        return 90
+    elif theda > torch.tensor([112.5], device=device) and theda <= torch.tensor([157.5], device=device):
+        return 135
+    elif theda > torch.tensor([157.5], device=device) and theda <= torch.tensor([180], device=device):
+        return 0
+    else:
+        return -1
+
+def _non_maximum_suppression(magnitude, angle, threshold=0.05):
+
+    for x in range(1, W-1):
+        for y in range(1, H-1):
+
+            if angle_rounder(angle[:, :, y, x]) == 0:
+                if magnitude[:, :, y, x] > magnitude[:, :, y, x-1] and magnitude[:, :, y, x] > magnitude[:, :, y, x+1]:
+                    img[:, :, y, x] = magnitude[:, :, y, x] if (magnitude[:, :, y, x] >= 0.05) else 0
+
+            elif angle_rounder(angle[:, :, y, x]) == 45:
+                if magnitude[:, :, y, x] > magnitude[:, :, y-1, x+1] and magnitude[:, :, y, x] > magnitude[:, :, y+1, x-1]:
+                    img[:, :, y, x] = magnitude[:, :, y, x] if (magnitude[:, :, y, x] >= 0.05) else 0
+            
+            elif angle_rounder(angle[:, :, y, x]) == 90:
+                if magnitude[:, :, y, x] > magnitude[:, :, y-1, x] and magnitude[:, :, y, x] > magnitude[:, :, y+1, x]:
+                    img[:, :, y, x] = magnitude[:, :, y, x] if (magnitude[:, :, y, x] >= 0.05) else 0
+
+            elif angle_rounder(angle[:, :, y, x]) == 135:
+                if magnitude[:, :, y, x] > magnitude[:, :, y-1, x-1] and magnitude[:, :, y, x] > magnitude[:, :, y+1, x+1]:
+                    img[:, :, y, x] = magnitude[:, :, y, x] if (magnitude[:, :, y, x] >= 0.05) else 0
+
+    return img
 
 def convert(img, device="cpu"):
 
@@ -51,41 +88,8 @@ def convert(img, device="cpu"):
 
     _, _, H, W = angle.shape
 
-    def angle_rounder(theda):
-        if theda >= torch.tensor([0], device=device) and theda <= torch.tensor([22.5], device=device):
-            return 0
-        elif theda > torch.tensor([22.5], device=device) and theda <= torch.tensor([67.5], device=device):
-            return 45
-        elif theda > torch.tensor([67.5], device=device) and theda <= torch.tensor([112.5], device=device):
-            return 90
-        elif theda > torch.tensor([112.5], device=device) and theda <= torch.tensor([157.5], device=device):
-            return 135
-        elif theda > torch.tensor([157.5], device=device) and theda <= torch.tensor([180], device=device):
-            return 0
-        else:
-            return -1
-
     img = torch.zeros_like(magnitude)
-
-    # Non-Maximum Suppression
-    for x in range(1, W-1):
-        for y in range(1, H-1):
-
-            if angle_rounder(angle[:, :, y, x]) == 0:
-                if magnitude[:, :, y, x] > magnitude[:, :, y, x-1] and magnitude[:, :, y, x] > magnitude[:, :, y, x+1]:
-                    img[:, :, y, x] = magnitude[:, :, y, x] if (magnitude[:, :, y, x] >= 0.05) else 0
-
-            elif angle_rounder(angle[:, :, y, x]) == 45:
-                if magnitude[:, :, y, x] > magnitude[:, :, y-1, x+1] and magnitude[:, :, y, x] > magnitude[:, :, y+1, x-1]:
-                    img[:, :, y, x] = magnitude[:, :, y, x] if (magnitude[:, :, y, x] >= 0.05) else 0
-            
-            elif angle_rounder(angle[:, :, y, x]) == 90:
-                if magnitude[:, :, y, x] > magnitude[:, :, y-1, x] and magnitude[:, :, y, x] > magnitude[:, :, y+1, x]:
-                    img[:, :, y, x] = magnitude[:, :, y, x] if (magnitude[:, :, y, x] >= 0.05) else 0
-
-            elif angle_rounder(angle[:, :, y, x]) == 135:
-                if magnitude[:, :, y, x] > magnitude[:, :, y-1, x-1] and magnitude[:, :, y, x] > magnitude[:, :, y+1, x+1]:
-                    img[:, :, y, x] = magnitude[:, :, y, x] if (magnitude[:, :, y, x] >= 0.05) else 0
+    img = non_maximum_suppression(magnitude, angle)
 
     '''
     # Hysteresis
