@@ -7,12 +7,12 @@ from torchvision import datasets, transforms
 from canny_filter import convert
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = "cpu"
+#device = "cpu"
 
 transforms = transforms.Compose([transforms.ToTensor()])
 dataset = ImageFolder(root='img/', transform=transforms)
 
-tensor,_ = dataset[0]
+tensor,_ = dataset[1]
 tensor = tensor.requires_grad_(True)
 
 print(tensor.requires_grad)
@@ -28,7 +28,7 @@ print(tensor.shape)
 #tensor = torch.ones_like(tensor) - tensor
 
 
-tensor = tensor.squeeze(0).squeeze(0).detach()
+tensor = tensor.squeeze(0).squeeze(0).detach().cpu()
 plt.imshow(tensor, cmap="grey")
 plt.show()
 

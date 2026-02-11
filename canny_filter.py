@@ -2,20 +2,13 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from nms import non_maximum_suppression
+import time
 
-def angle_rounder(theda):
-    if theda >= torch.tensor([0], device=device) and theda <= torch.tensor([22.5], device=device):
-        return 0
-    elif theda > torch.tensor([22.5], device=device) and theda <= torch.tensor([67.5], device=device):
-        return 45
-    elif theda > torch.tensor([67.5], device=device) and theda <= torch.tensor([112.5], device=device):
-        return 90
-    elif theda > torch.tensor([112.5], device=device) and theda <= torch.tensor([157.5], device=device):
-        return 135
-    elif theda > torch.tensor([157.5], device=device) and theda <= torch.tensor([180], device=device):
-        return 0
-    else:
-        return -1
+
+@torch.jit.script
+def angle_rounder(theda: torch.Tensor) -> torch.Tensor:
+    factor = 4.0 / 3.14159265359  # (180/π) / 45
+    return torch.fmod(torch.round(theda * factor) * 45.0, 180.0).long()
 
 def _non_maximum_suppression(magnitude, angle, threshold=0.05):
 
@@ -87,9 +80,10 @@ def convert(img, device="cpu"):
     angle = angle % 180
 
     _, _, H, W = angle.shape
-
     img = torch.zeros_like(magnitude)
-    img = non_maximum_suppression(magnitude, angle)
+    round_angle = angle_rounder(angle)
+
+    img = non_maximum_suppression(magnitude, round_angle)
 
     '''
     # Hysteresis
