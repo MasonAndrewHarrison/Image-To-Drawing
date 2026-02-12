@@ -15,11 +15,11 @@ dataset = ImageFolder(root='img/', transform=transforms)
 tensor,_ = dataset[1]
 tensor = tensor.requires_grad_(True)
 
-print(tensor.requires_grad)
+print(tensor.requires_grad, tensor.shape)
 
 img = convert(tensor, device=device)
 
-print(img.requires_grad)
+print(img.requires_grad, img.shape)
 
 tensor = img
 

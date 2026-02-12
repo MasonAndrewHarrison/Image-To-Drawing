@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
-from nms import non_maximum_suppression
 import time
 
 
@@ -10,28 +9,75 @@ def angle_rounder(theda: torch.Tensor) -> torch.Tensor:
     factor = 4.0 / 3.14159265359  # (180/π) / 45
     return torch.fmod(torch.round(theda * factor) * 45.0, 180.0).long()
 
-def _non_maximum_suppression(magnitude, angle, threshold=0.05):
+def non_maximum_suppression(magnitude, round_angle, threshold=0.05):
 
-    for x in range(1, W-1):
-        for y in range(1, H-1):
+    m = magnitude
+    mp = F.pad(m, (1, 1, 1, 1))
+    
+    B, C, H, W = m.shape
+    left       = mp[:, :, 1:H+1, 0:W]
+    right      = mp[:, :, 1:H+1, 2:W+2]
+    top        = mp[:, :, 0:H,   1:W+1]
+    bottom     = mp[:, :, 2:H+2, 1:W+1]
+    top_right  = mp[:, :, 0:H,   2:W+2]
+    bot_left   = mp[:, :, 2:H+2, 0:W]
+    top_left   = mp[:, :, 0:H,   0:W]
+    bot_right  = mp[:, :, 2:H+2, 2:W+2]
 
-            if angle_rounder(angle[:, :, y, x]) == 0:
-                if magnitude[:, :, y, x] > magnitude[:, :, y, x-1] and magnitude[:, :, y, x] > magnitude[:, :, y, x+1]:
-                    img[:, :, y, x] = magnitude[:, :, y, x] if (magnitude[:, :, y, x] >= 0.05) else 0
+    is_max_0   = (m > left)      & (m > right)
+    is_max_45  = (m > top_right) & (m > bot_left)
+    is_max_90  = (m > top)       & (m > bottom)
+    is_max_135 = (m > top_left)  & (m > bot_right)
 
-            elif angle_rounder(angle[:, :, y, x]) == 45:
-                if magnitude[:, :, y, x] > magnitude[:, :, y-1, x+1] and magnitude[:, :, y, x] > magnitude[:, :, y+1, x-1]:
-                    img[:, :, y, x] = magnitude[:, :, y, x] if (magnitude[:, :, y, x] >= 0.05) else 0
-            
-            elif angle_rounder(angle[:, :, y, x]) == 90:
-                if magnitude[:, :, y, x] > magnitude[:, :, y-1, x] and magnitude[:, :, y, x] > magnitude[:, :, y+1, x]:
-                    img[:, :, y, x] = magnitude[:, :, y, x] if (magnitude[:, :, y, x] >= 0.05) else 0
+    mask_0   = round_angle == 0
+    mask_45  = round_angle == 45
+    mask_90  = round_angle == 90
+    mask_135 = round_angle == 135
+    
+    is_max = (
+        (mask_0   & is_max_0)   |
+        (mask_45  & is_max_45)  |
+        (mask_90  & is_max_90)  |
+        (mask_135 & is_max_135)
+    )
 
-            elif angle_rounder(angle[:, :, y, x]) == 135:
-                if magnitude[:, :, y, x] > magnitude[:, :, y-1, x-1] and magnitude[:, :, y, x] > magnitude[:, :, y+1, x+1]:
-                    img[:, :, y, x] = magnitude[:, :, y, x] if (magnitude[:, :, y, x] >= 0.05) else 0
-
+    img = torch.where(is_max & (m >= threshold), m, torch.zeros_like(m))
+    
     return img
+
+def hysteresis(img, threshold=0.1):
+
+    old_img = img.clone()
+
+    _, _, H, W = img.shape
+    padded_img = F.pad(img, (1, 1, 1, 1))
+    
+    top       = padded_img[:, :, 0:H,   1:W+1]
+    bottom    = padded_img[:, :, 2:H+2, 1:W+1]
+    left      = padded_img[:, :, 1:H+1, 0:W]
+    right     = padded_img[:, :, 1:H+1, 2:W+2]
+    top_right = padded_img[:, :, 0:H,   2:W+2]
+    bot_left  = padded_img[:, :, 2:H+2, 0:W]
+    top_left  = padded_img[:, :, 0:H,   0:W]
+    bot_right = padded_img[:, :, 2:H+2, 2:W+2]
+
+    surrounding_pixels = torch.concat([
+        top,
+        bottom,
+        left,
+        right,
+        top_right,
+        bot_left,
+        top_left,
+        bot_right
+    ], dim=1)
+
+    mask_1 = (surrounding_pixels >= torch.ones_like(img)*threshold).any(dim=1)
+    mask_2 = (img != torch.zeros_like(img))
+
+    img = torch.where(mask_1 & mask_2, torch.ones_like(img), img)
+
+    return img, (old_img == img).all()
 
 def convert(img, device="cpu"):
 
@@ -85,26 +131,13 @@ def convert(img, device="cpu"):
 
     img = non_maximum_suppression(magnitude, round_angle)
 
-    '''
-    # Hysteresis
-    for x in range(1, W-1):
-        for y in range(1, H-1):
-            
-            if img[:, :, y, x] is not torch.tensor([0], device=device):
-                top_left = img[:, :, y+1, x-1]
-                left = img[:, :, y, x-1]
-                bottom_left = img[:, :, y-1, x-1]
-                
-                top_right = img[:, :, y+1, x+1]
-                right = img[:, :, y, x+1]
-                bottom_right = img[:, :, y-1, x+1]
+    idx = 0
+    hysteresis_finished = False
+    while not hysteresis_finished:
+        idx += 1
+        img, hysteresis_finished = hysteresis(img)
+        print(idx, hysteresis_finished)
 
-                bottom = img[:, :, y-1, x]
-                top = img[:, :, y+1, x]
-
-                surrounding_pixels = torch.stack([top_left, left, bottom_left, top_right, right, bottom_right, bottom, top])
-
-                if (surrounding_pixels >= 0.5).any():
-                    img[:, :, y, x] = torch.tensor([1], device=device)'''
+    img = (img == torch.ones_like(img))
 
     return img
