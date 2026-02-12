@@ -45,9 +45,9 @@ def non_maximum_suppression(magnitude, round_angle, threshold=0.05):
     
     return img
 
-def hysteresis(img, threshold=0.1):
+def hysteresis(img, threshold=0.08):
 
-    old_img = img.clone()
+    old_img = img.clone().detach()
 
     _, _, H, W = img.shape
     padded_img = F.pad(img, (1, 1, 1, 1))
@@ -76,8 +76,9 @@ def hysteresis(img, threshold=0.1):
     mask_2 = (img != torch.zeros_like(img))
 
     img = torch.where(mask_1 & mask_2, torch.ones_like(img), img)
+    is_complete = (old_img == img).all()
 
-    return img, (old_img == img).all()
+    return img, is_complete
 
 def convert(img, device="cpu"):
 
@@ -112,9 +113,7 @@ def convert(img, device="cpu"):
     sobel_x = sobel_x.unsqueeze(0).unsqueeze(0).to(device)
     sobel_y = sobel_y.unsqueeze(0).unsqueeze(0).to(device)
 
-    inverted = img.mean(0).unsqueeze(0).unsqueeze(0).to(device) / 256.0
-
-    blurred = F.conv2d(inverted, gaussian_blur, padding=1)
+    blurred = F.conv2d(img, gaussian_blur, padding=1)
     sharp_x = F.conv2d(blurred, sobel_x, padding=1, groups=1) 
     sharp_y = F.conv2d(blurred, sobel_y, padding=1, groups=1)
 
@@ -130,14 +129,13 @@ def convert(img, device="cpu"):
     round_angle = angle_rounder(angle)
 
     img = non_maximum_suppression(magnitude, round_angle)
+    img = img[:, :, 1:H-1, 1:W-1]
 
-    idx = 0
     hysteresis_finished = False
     while not hysteresis_finished:
-        idx += 1
         img, hysteresis_finished = hysteresis(img)
-        print(idx, hysteresis_finished)
 
-    img = (img == torch.ones_like(img))
+    img = img - 0.99
+    img = img.clamp_(min=0.00) * 100
 
     return img
