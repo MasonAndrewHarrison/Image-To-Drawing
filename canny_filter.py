@@ -9,7 +9,7 @@ def angle_rounder(theda: torch.Tensor) -> torch.Tensor:
     factor = 4.0 / 3.14159265359  # (180/π) / 45
     return torch.fmod(torch.round(theda * factor) * 45.0, 180.0).long()
 
-def non_maximum_suppression(magnitude, round_angle, threshold=0.05):
+def non_maximum_suppression(magnitude, round_angle, threshold=0.005):
 
     m = magnitude
     mp = F.pad(m, (1, 1, 1, 1))
@@ -45,7 +45,7 @@ def non_maximum_suppression(magnitude, round_angle, threshold=0.05):
     
     return img
 
-def hysteresis(img, threshold=0.08):
+def hysteresis(img, threshold=0.06):
 
     old_img = img.clone().detach()
 
@@ -80,7 +80,7 @@ def hysteresis(img, threshold=0.08):
 
     return img, is_complete
 
-def convert(img, device="cpu"):
+def convert(img, device="cpu", threshold_1=0.005, threshold_2=0.06):
 
     gaussian_blur = torch.tensor([
         [1, 2, 1],
@@ -88,7 +88,7 @@ def convert(img, device="cpu"):
         [1, 2, 1],
     ], dtype=torch.float32)
 
-    big_blur = torch.tensor([
+    big_gaussian_blur = torch.tensor([
         [1, 4, 6, 4, 1],
         [4,16,24,16, 4],
         [6,24,36,24, 6],
@@ -109,11 +109,11 @@ def convert(img, device="cpu"):
     ], dtype=torch.float32)
 
     gaussian_blur = gaussian_blur.unsqueeze(0).unsqueeze(0).to(device)
-    big_blur = big_blur.unsqueeze(0).unsqueeze(0).to(device)
+    big_gaussian_blur = big_gaussian_blur.unsqueeze(0).unsqueeze(0).to(device)
     sobel_x = sobel_x.unsqueeze(0).unsqueeze(0).to(device)
     sobel_y = sobel_y.unsqueeze(0).unsqueeze(0).to(device)
 
-    blurred = F.conv2d(img, gaussian_blur, padding=1)
+    blurred = F.conv2d(img, big_gaussian_blur, padding=1)
     sharp_x = F.conv2d(blurred, sobel_x, padding=1, groups=1) 
     sharp_y = F.conv2d(blurred, sobel_y, padding=1, groups=1)
 
@@ -128,14 +128,16 @@ def convert(img, device="cpu"):
     img = torch.zeros_like(magnitude)
     round_angle = angle_rounder(angle)
 
-    img = non_maximum_suppression(magnitude, round_angle)
+    img = non_maximum_suppression(magnitude, round_angle, threshold=threshold_1)
     img = img[:, :, 1:H-1, 1:W-1]
 
     hysteresis_finished = False
     while not hysteresis_finished:
-        img, hysteresis_finished = hysteresis(img)
+        img, hysteresis_finished = hysteresis(img, threshold=threshold_2)
 
     img = img - 0.99
     img = img.clamp_(min=0.00) * 100
 
     return img
+
+

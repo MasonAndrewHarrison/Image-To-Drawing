@@ -20,11 +20,12 @@ tensor = tensor.mean(0).unsqueeze(0).unsqueeze(0).to(device) / 256.0
 print(tensor.shape)
 _, _, H, W = tensor.shape
 
-tensor = F.interpolate(tensor, (H*3, W*3), mode="bilinear", align_corners=False)
 
-img = convert(tensor, device=device)
+
+img = convert(tensor, device=device, threshold_1=0.005, threshold_2=0.08)
 tensor = img
 
+tensor = F.interpolate(tensor, (H*2, W*2), mode="bilinear", align_corners=False)
 
 gaussian_blur = torch.tensor([
     [1, 2, 1],
@@ -41,8 +42,9 @@ big_blur = torch.tensor([
 ], dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device) / 256.0
 
 
-tensor = F.conv2d(tensor, gaussian_blur, padding=1)
-tensor = (tensor <= torch.ones_like(tensor)*0.05)
+tensor = F.conv2d(tensor, big_blur, padding=1)
+#tensor = (tensor <= torch.ones_like(tensor)*0.05)
+tensor = F.interpolate(tensor, (H, W), mode="bilinear", align_corners=False)
 
 tensor = tensor.squeeze(0).squeeze(0).detach().cpu()
 plt.imshow(tensor, cmap="grey")
