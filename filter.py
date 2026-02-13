@@ -3,6 +3,45 @@ import torch
 import torch.nn.functional as F
 import time
 
+def scale(img: torch.Tensor, scaler: float=1) -> torch.Tensor:
+
+    _, _, H, W = img.shape
+    H *= scaler
+    W *= scaler
+
+    img = F.interpolate(img, (H, W), mode="bilinear", align_corners=False)
+
+    return img
+
+def invert(img: torch.Tensor) -> torch.Tensor:
+
+    return img*-1 + 1
+
+@torch.jit.script
+def guassian_blur(img: torch.Tensor, big_blur: bool = True) -> torch.Tensor:
+
+    device = img.device
+
+    gaussian_blur = torch.tensor([
+        [1, 2, 1],
+        [2, 4, 2],
+        [1, 2, 1],
+    ], dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device) / 16
+
+    big_gaussian_blur = torch.tensor([
+        [1, 4, 6, 4, 1],
+        [4,16,24,16, 4],
+        [6,24,36,24, 6],
+        [4,16,24,16, 4],
+        [1, 4, 6, 4, 1],
+    ], dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device) / 256.0
+
+    if big_blur:
+        img = F.conv2d(img, big_gaussian_blur, padding=2)
+    else:
+        img = F.conv2d(img, gaussian_blur, padding=1)
+
+    return img
 
 @torch.jit.script
 def angle_rounder(theda: torch.Tensor) -> torch.Tensor:
@@ -45,42 +84,34 @@ def non_maximum_suppression(magnitude, round_angle, threshold=0.005):
     
     return img
 
-def hysteresis(img, threshold=0.06):
+@torch.jit.script
+def hysteresis(img: torch.Tensor, threshold: float=0.06) -> tuple[torch.Tensor, bool]:
 
     old_img = img.clone().detach()
 
     _, _, H, W = img.shape
     padded_img = F.pad(img, (1, 1, 1, 1))
     
-    top       = padded_img[:, :, 0:H,   1:W+1]
-    bottom    = padded_img[:, :, 2:H+2, 1:W+1]
-    left      = padded_img[:, :, 1:H+1, 0:W]
-    right     = padded_img[:, :, 1:H+1, 2:W+2]
-    top_right = padded_img[:, :, 0:H,   2:W+2]
-    bot_left  = padded_img[:, :, 2:H+2, 0:W]
-    top_left  = padded_img[:, :, 0:H,   0:W]
-    bot_right = padded_img[:, :, 2:H+2, 2:W+2]
-
     surrounding_pixels = torch.concat([
-        top,
-        bottom,
-        left,
-        right,
-        top_right,
-        bot_left,
-        top_left,
-        bot_right
+        padded_img[:, :, 0:H,   1:W+1],
+        padded_img[:, :, 2:H+2, 1:W+1],
+        padded_img[:, :, 1:H+1, 0:W],
+        padded_img[:, :, 1:H+1, 2:W+2],
+        padded_img[:, :, 0:H,   2:W+2],
+        padded_img[:, :, 2:H+2, 0:W],
+        padded_img[:, :, 0:H,   0:W],
+        padded_img[:, :, 2:H+2, 2:W+2],
     ], dim=1)
 
-    mask_1 = (surrounding_pixels >= torch.ones_like(img)*threshold).any(dim=1)
-    mask_2 = (img != torch.zeros_like(img))
+    has_strong_neighbor = (surrounding_pixels >= threshold).any(dim=1, keepdim=True)
+    active_pixel = img > 0.0
 
-    img = torch.where(mask_1 & mask_2, torch.ones_like(img), img)
-    is_complete = (old_img == img).all()
+    img = torch.where(has_strong_neighbor & active_pixel, torch.ones_like(img), img)
+    is_complete = torch.equal(old_img, img)
 
     return img, is_complete
 
-def convert(img, device="cpu", threshold_1=0.005, threshold_2=0.06):
+def canny(img, device="cpu", threshold_1=0.005, threshold_2=0.06):
 
     gaussian_blur = torch.tensor([
         [1, 2, 1],
@@ -113,7 +144,7 @@ def convert(img, device="cpu", threshold_1=0.005, threshold_2=0.06):
     sobel_x = sobel_x.unsqueeze(0).unsqueeze(0).to(device)
     sobel_y = sobel_y.unsqueeze(0).unsqueeze(0).to(device)
 
-    blurred = F.conv2d(img, big_gaussian_blur, padding=1)
+    blurred = F.conv2d(img, big_gaussian_blur, padding=2)
     sharp_x = F.conv2d(blurred, sobel_x, padding=1, groups=1) 
     sharp_y = F.conv2d(blurred, sobel_y, padding=1, groups=1)
 
