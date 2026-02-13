@@ -16,7 +16,6 @@ tensor = tensor.requires_grad_(True)
 tensor = tensor.mean(0).unsqueeze(0).unsqueeze(0).to(device) / 256.0
 
 tensor = filter.canny(tensor, device=device, threshold_1=0.005, threshold_2=0.08)
-
 tensor = filter.scale(tensor, 2)
 tensor = filter.invert(tensor)
 

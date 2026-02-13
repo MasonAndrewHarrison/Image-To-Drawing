@@ -3,24 +3,24 @@ import torch
 import torch.nn.functional as F
 import time
 
-def scale(img: torch.Tensor, scaler: float=1) -> torch.Tensor:
+def scale(image: torch.Tensor, scaler: float=1) -> torch.Tensor:
 
-    _, _, H, W = img.shape
+    _, _, H, W = image.shape
     H *= scaler
     W *= scaler
 
-    img = F.interpolate(img, (H, W), mode="bilinear", align_corners=False)
+    image = F.interpolate(image, (H, W), mode="bilinear", align_corners=False)
 
-    return img
+    return image
 
-def invert(img: torch.Tensor) -> torch.Tensor:
+def invert(image: torch.Tensor) -> torch.Tensor:
 
-    return img*-1 + 1
+    return image*-1 + 1
 
 @torch.jit.script
-def guassian_blur(img: torch.Tensor, big_blur: bool = True) -> torch.Tensor:
+def guassian_blur(image: torch.Tensor, big_blur: bool = True) -> torch.Tensor:
 
-    device = img.device
+    device = image.device
 
     gaussian_blur = torch.tensor([
         [1, 2, 1],
@@ -37,11 +37,11 @@ def guassian_blur(img: torch.Tensor, big_blur: bool = True) -> torch.Tensor:
     ], dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device) / 256.0
 
     if big_blur:
-        img = F.conv2d(img, big_gaussian_blur, padding=2)
+        image = F.conv2d(image, big_gaussian_blur, padding=2)
     else:
-        img = F.conv2d(img, gaussian_blur, padding=1)
+        image = F.conv2d(image, gaussian_blur, padding=1)
 
-    return img
+    return image
 
 @torch.jit.script
 def angle_rounder(theda: torch.Tensor) -> torch.Tensor:
@@ -80,17 +80,17 @@ def non_maximum_suppression(magnitude, round_angle, threshold=0.005):
         (mask_135 & is_max_135)
     )
 
-    img = torch.where(is_max & (m >= threshold), m, torch.zeros_like(m))
+    image = torch.where(is_max & (m >= threshold), m, torch.zeros_like(m))
     
-    return img
+    return image
 
 @torch.jit.script
-def hysteresis(img: torch.Tensor, threshold: float=0.06) -> tuple[torch.Tensor, bool]:
+def hysteresis(image: torch.Tensor, threshold: float=0.06) -> tuple[torch.Tensor, bool]:
 
-    old_img = img.clone().detach()
+    old_img = image.clone().detach()
 
-    _, _, H, W = img.shape
-    padded_img = F.pad(img, (1, 1, 1, 1))
+    _, _, H, W = image.shape
+    padded_img = F.pad(image, (1, 1, 1, 1))
     
     surrounding_pixels = torch.concat([
         padded_img[:, :, 0:H,   1:W+1],
@@ -104,28 +104,16 @@ def hysteresis(img: torch.Tensor, threshold: float=0.06) -> tuple[torch.Tensor, 
     ], dim=1)
 
     has_strong_neighbor = (surrounding_pixels >= threshold).any(dim=1, keepdim=True)
-    active_pixel = img > 0.0
+    active_pixel = image > 0.0
 
-    img = torch.where(has_strong_neighbor & active_pixel, torch.ones_like(img), img)
-    is_complete = torch.equal(old_img, img)
+    image = torch.where(has_strong_neighbor & active_pixel, torch.ones_like(image), image)
+    is_complete = torch.equal(old_img, image)
 
-    return img, is_complete
+    return image, is_complete
 
-def canny(img, device="cpu", threshold_1=0.005, threshold_2=0.06):
+def sobel_edge_detection(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
-    gaussian_blur = torch.tensor([
-        [1, 2, 1],
-        [2, 4, 2],
-        [1, 2, 1],
-    ], dtype=torch.float32)
-
-    big_gaussian_blur = torch.tensor([
-        [1, 4, 6, 4, 1],
-        [4,16,24,16, 4],
-        [6,24,36,24, 6],
-        [4,16,24,16, 4],
-        [1, 4, 6, 4, 1],
-    ], dtype=torch.float32)
+    device = image.device
 
     sobel_x = torch.tensor([
         [-1, 0, 1],
@@ -139,14 +127,11 @@ def canny(img, device="cpu", threshold_1=0.005, threshold_2=0.06):
         [1, 2, 1],
     ], dtype=torch.float32)
 
-    gaussian_blur = gaussian_blur.unsqueeze(0).unsqueeze(0).to(device)
-    big_gaussian_blur = big_gaussian_blur.unsqueeze(0).unsqueeze(0).to(device)
     sobel_x = sobel_x.unsqueeze(0).unsqueeze(0).to(device)
     sobel_y = sobel_y.unsqueeze(0).unsqueeze(0).to(device)
-
-    blurred = F.conv2d(img, big_gaussian_blur, padding=2)
-    sharp_x = F.conv2d(blurred, sobel_x, padding=1, groups=1) 
-    sharp_y = F.conv2d(blurred, sobel_y, padding=1, groups=1)
+    
+    sharp_x = F.conv2d(image, sobel_x, padding=1, groups=1) 
+    sharp_y = F.conv2d(image, sobel_y, padding=1, groups=1)
 
     magnitude = torch.sqrt(sharp_x * sharp_x + sharp_y * sharp_y)
     magnitude = magnitude / magnitude.max()
@@ -155,20 +140,27 @@ def canny(img, device="cpu", threshold_1=0.005, threshold_2=0.06):
     angle = torch.atan2(sharp_y, sharp_x) * 180.0 / np.pi
     angle = angle % 180
 
-    _, _, H, W = angle.shape
-    img = torch.zeros_like(magnitude)
+    return magnitude, angle
+
+def canny(image, device="cpu", threshold_1=0.005, threshold_2=0.06):
+
+    _, _, H, W = image.shape
+
+    blurred = guassian_blur(image, big_blur=True)
+    magnitude, angle = sobel_edge_detection(blurred)
+
     round_angle = angle_rounder(angle)
 
-    img = non_maximum_suppression(magnitude, round_angle, threshold=threshold_1)
-    img = img[:, :, 1:H-1, 1:W-1]
+    image = non_maximum_suppression(magnitude, round_angle, threshold=threshold_1)
+    image = image[:, :, 1:H-1, 1:W-1]
 
-    hysteresis_finished = False
-    while not hysteresis_finished:
-        img, hysteresis_finished = hysteresis(img, threshold=threshold_2)
+    is_complete = False
+    while not is_complete:
+        image, is_complete = hysteresis(image, threshold=threshold_2)
 
-    img = img - 0.99
-    img = img.clamp_(min=0.00) * 100
+    image = image - 0.99
+    image = image.clamp_(min=0.00) * 100
 
-    return img
+    return image
 
 
