@@ -18,7 +18,7 @@ def invert(image: torch.Tensor) -> torch.Tensor:
     return image*-1 + 1
 
 @torch.jit.script
-def guassian_blur(image: torch.Tensor, big_blur: bool = True) -> torch.Tensor:
+def gaussian_blur(image: torch.Tensor, big_blur: bool = False) -> torch.Tensor:
 
     device = image.device
 
@@ -40,6 +40,38 @@ def guassian_blur(image: torch.Tensor, big_blur: bool = True) -> torch.Tensor:
         image = F.conv2d(image, big_gaussian_blur, padding=2)
     else:
         image = F.conv2d(image, gaussian_blur, padding=1)
+
+    return image
+
+def gaussian(x: float, y: float, sigma: float = 1, mean: int = 0) -> float:
+
+    x -= mean
+    y -= mean
+
+    # 1 / (2πσ^2)
+    normalization_constant = 1/(2 * np.pi * sigma**2)
+    # -[ (x^2 + y^2) / 2σ^2]
+    kernel_exponent = -(x**2 + y**2)/(2 * sigma**2)
+    # normalization_constant * ( e^kernel_exponent )
+    gaussian = normalization_constant * np.exp(kernel_exponent)
+
+    return gaussian
+
+def variable_gaussian_blur(image: torch.Tensor, size: int, sigma: float = 1) -> torch.Tensor:
+
+    device = image.device
+
+    kernel = torch.empty((size, size), dtype=torch.float32)
+    offset = int(np.floor(size/2))
+
+    for i in range(size):
+        for j in range(size):
+
+            kernel[i, j] = gaussian(x=i, y=j, sigma=sigma, mean=offset)
+
+    kernel = kernel / kernel.sum()
+    kernel = kernel.unsqueeze(0).unsqueeze(0).to(device)
+    image = F.conv2d(image, kernel, padding=offset)
 
     return image
 
@@ -146,13 +178,12 @@ def canny(image, device="cpu", threshold_1=0.005, threshold_2=0.06):
 
     _, _, H, W = image.shape
 
-    blurred = guassian_blur(image, big_blur=True)
+    blurred = gaussian_blur(image, big_blur=True)
     magnitude, angle = sobel_edge_detection(blurred)
 
     round_angle = angle_rounder(angle)
 
     image = non_maximum_suppression(magnitude, round_angle, threshold=threshold_1)
-    image = image[:, :, 1:H-1, 1:W-1]
 
     is_complete = False
     while not is_complete:
@@ -161,6 +192,62 @@ def canny(image, device="cpu", threshold_1=0.005, threshold_2=0.06):
     image = image - 0.99
     image = image.clamp_(min=0.00) * 100
 
+    image = invert(image)
+
     return image
 
+def difference_of_gaussians(image: torch, sigma: float = 1.4, k: float = 1.6) -> torch.Tensor:
+
+    size1 = 2 * int(3 * sigma) + 1
+    size2 = 2 * int(3 * k * sigma) + 1
+    
+    small_blur = variable_gaussian_blur(image, size=size1, sigma=sigma)
+    big_blur = variable_gaussian_blur(image, size=size2, sigma=k * sigma)
+
+    return small_blur - big_blur
+
+def ex_difference_of_gaussians(
+        image: torch.Tensor, 
+        tau: float = 0.99, 
+        epsilon: float = 0.0,
+        phi: float = 50,
+        sigma: float = 1.4, 
+        threshold: float = 0.7,
+        use_threshold: bool = True,
+        k: float = 1.6) -> torch.Tensor:
+
+    _, _, H, W = image.shape
+    base_resolution = 300
+    current_resolution = (H + W)/ 2
+    scale_factor = current_resolution / base_resolution
+
+    scaled_simga = sigma * scale_factor
+
+    size1 = 2 * int(3 * scaled_simga) + 1
+    size2 = 2 * int(3 * k * scaled_simga) + 1
+
+    # range [0, 1]
+    image = image / image.max()
+    
+    small_blur = variable_gaussian_blur(image, size=size1, sigma=scaled_simga)
+    big_blur = variable_gaussian_blur(image, size=size2, sigma=k * scaled_simga)
+
+    # D(σ,k,τ) = G_σ - τ·G_kσ
+    image = small_blur - (tau * big_blur)
+
+    # T(u,ε,φ) = 1 if u ≥ ε, else 1 + tanh(φ(u - ε))
+    image = torch.where(
+        image >= epsilon, 
+        torch.ones_like(image), 
+        1.0 + torch.tanh(phi * (image - epsilon))
+    )
+
+    if use_threshold:
+        image = image > 0.7
+
+    return image
+
+def flow_ex_difference_of_gaussians(image: torch.Tensor) -> torch.Tensor:
+
+    return image
 
