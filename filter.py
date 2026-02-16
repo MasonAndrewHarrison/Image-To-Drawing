@@ -212,7 +212,7 @@ def ex_difference_of_gaussians(
         epsilon: float = 0.0,
         phi: float = 100,
         sigma: float = 1.0, 
-        threshold: float = 0.5,
+        threshold: float = 0.7,
         use_threshold: bool = True,
         k: float = 1.6) -> torch.Tensor:
 

@@ -17,7 +17,8 @@ fig, axes = plt.subplots(3, 5, figsize=(16, 4))
 for i in range(5):
 
     idx = 0
-    tensor,_ = dataset[i+50]
+    tensor,_ = dataset[i+500]
+    print(tensor.shape)
 
     tensor = tensor.requires_grad_(True)
 
