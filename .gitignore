@@ -4,3 +4,5 @@ img/
 venv/
 __pycache__*
 nms.py
+temp/
+dataset_images/
