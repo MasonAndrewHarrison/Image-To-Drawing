@@ -210,9 +210,9 @@ def ex_difference_of_gaussians(
         image: torch.Tensor, 
         tau: float = 0.99, 
         epsilon: float = 0.0,
-        phi: float = 50,
-        sigma: float = 1.4, 
-        threshold: float = 0.7,
+        phi: float = 100,
+        sigma: float = 1.0, 
+        threshold: float = 0.5,
         use_threshold: bool = True,
         k: float = 1.6) -> torch.Tensor:
 
@@ -243,7 +243,7 @@ def ex_difference_of_gaussians(
     )
 
     if use_threshold:
-        image = image > 0.7
+        image = image > threshold
 
     return image
 
