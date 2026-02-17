@@ -70,7 +70,7 @@ if __name__ == "__main__":
 
     random = torch.randn(1, 1, 64, 64)
     print(random.shape)
-    model = Model(in_channels=1, out_features=5)
+    model = Model(in_channels=1, out_features=6)
     out = model(random)
     print(out.shape)
     torch.save(model.state_dict(), "Model_Weights.pth")

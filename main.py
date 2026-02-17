@@ -10,7 +10,7 @@ from model import Model
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = Model(in_channels=1, out_features=5).to(device)
+model = Model(in_channels=1, out_features=6).to(device)
 model.eval()
 model.load_state_dict(torch.load("Model_Weights.pth", map_location=device))
 
@@ -71,6 +71,7 @@ while running:
     mouse_moved = False
     if_unleft_clicked = False
     space_pressed = False
+    ai_new_line = False
 
     for event in pygame.event.get():
 
@@ -90,6 +91,14 @@ while running:
                 matrix = get_28x28_matrix()
                 out = model(matrix.to(device))
                 mouse_x, mouse_y = out[:, 2], out[:, 3]
+                mouse_x_end, mouse_y_end = out[:, 4], out[:, 5]
+                ai_new_line = (out[:, 0].item()+0.1) * random.randint(-1, 1) <= 0
+                print(ai_new_line, out[:, 0])
+
+                mouse_x = mouse_x.item()
+                mouse_y = mouse_y.item()
+                mouse_x_end = mouse_x_end.item()
+                mouse_y_end = mouse_y_end.item()
 
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:
@@ -103,11 +112,23 @@ while running:
 
     if (left_clicked and mouse_moved): 
         current_stroke.append((mouse_x, mouse_y))
-        print(mouse_x, mouse_y)
 
     elif space_pressed:
-        current_stroke.append((random.randint(1, SCREEN_WIDTH), random.randint(1, SCREEN_HEIGHT)))
 
+        if ai_new_line:
+            strokes_list.append(current_stroke)
+            current_stroke = []
+
+        ry = random.randint(1, SCREEN_HEIGHT)
+        rx = random.randint(1, SCREEN_WIDTH)
+
+        current_stroke.append((mouse_x * rx * 4, mouse_y * ry * 4))
+
+        ry = random.randint(1, SCREEN_HEIGHT)
+        rx = random.randint(1, SCREEN_WIDTH)
+
+        current_stroke.append((mouse_x_end * rx * 4, mouse_y_end * ry * 4))
+ 
     elif if_unleft_clicked:
         strokes_list.append(current_stroke)
         current_stroke = []
@@ -116,8 +137,6 @@ while running:
         strokes_list = []
 
     drawAllStrokes(current_stroke, strokes_list, 20)
-    matrix = get_28x28_matrix()
-    matrix = torch.tensor(matrix).unsqueeze(0)
     screen.fill(WHITE)
     drawAllStrokes(current_stroke, strokes_list, 10)
         
