@@ -6,3 +6,4 @@ __pycache__*
 nms.py
 temp/
 dataset_images/
+*.pth

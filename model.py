@@ -6,7 +6,7 @@ import filter
 
 class Model(nn.Module):
 
-    def __init__(self, in_channels, in_dim, out_features: int = 3, features: int = 16):
+    def __init__(self, in_channels, out_features: int = 3, features: int = 16):
         super(Model, self).__init__()
 
         self.features = features
@@ -68,8 +68,9 @@ class Model(nn.Module):
 
 if __name__ == "__main__":
 
-    random = torch.randn(1, 1, 640, 64)
+    random = torch.randn(1, 1, 64, 64)
     print(random.shape)
-    model = Model(1, 64, out_features=5)
+    model = Model(in_channels=1, out_features=5)
     out = model(random)
     print(out.shape)
+    torch.save(model.state_dict(), "Model_Weights.pth")

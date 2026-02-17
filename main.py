@@ -5,9 +5,14 @@ import pygame
 from PIL import Image
 import torchvision.transforms as transforms
 from torchvision.transforms import functional as F
+import random
+from model import Model
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = Model(in_channels=1, out_features=5).to(device)
+model.eval()
+model.load_state_dict(torch.load("Model_Weights.pth", map_location=device))
 
 pygame.init()
 font = pygame.font.Font(None, 74)
@@ -38,9 +43,12 @@ def get_28x28_matrix():
     temp_image = Image.frombytes('RGB', (SCREEN_WIDTH, SCREEN_HEIGHT), string_image)
     
     temp_image = temp_image.convert('L')
-    temp_image = temp_image.resize((28, 28), Image.LANCZOS)
+    temp_image = temp_image.resize((320, 240), Image.LANCZOS)
 
     matrix = (np.array(temp_image) / 255.0)*2 - 1
+    matrix = torch.tensor(matrix, dtype=torch.float32)
+    matrix = matrix.unsqueeze(0).unsqueeze(0)
+
     return matrix
 
 
@@ -79,6 +87,9 @@ while running:
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
                 space_pressed = True
+                matrix = get_28x28_matrix()
+                out = model(matrix.to(device))
+                mouse_x, mouse_y = out[:, 2], out[:, 3]
 
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:
@@ -92,6 +103,10 @@ while running:
 
     if (left_clicked and mouse_moved): 
         current_stroke.append((mouse_x, mouse_y))
+        print(mouse_x, mouse_y)
+
+    elif space_pressed:
+        current_stroke.append((random.randint(1, SCREEN_WIDTH), random.randint(1, SCREEN_HEIGHT)))
 
     elif if_unleft_clicked:
         strokes_list.append(current_stroke)
@@ -102,6 +117,7 @@ while running:
 
     drawAllStrokes(current_stroke, strokes_list, 20)
     matrix = get_28x28_matrix()
+    matrix = torch.tensor(matrix).unsqueeze(0)
     screen.fill(WHITE)
     drawAllStrokes(current_stroke, strokes_list, 10)
         
