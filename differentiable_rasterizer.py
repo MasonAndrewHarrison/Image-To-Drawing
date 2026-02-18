@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
+import matplotlib.pyplot as plt
 
-def render_lines(strokes, height=128, width=128, brush_thickness = 0.01):
+def render_lines(strokes, height, width, brush_thickness = 0.01):
 
     canvas = torch.zeros(1, height, width)
     sigma = brush_thickness
@@ -39,3 +40,5 @@ def render_lines(strokes, height=128, width=128, brush_thickness = 0.01):
         canvas = torch.clamp(canvas + brightness, 0, 1)
 
     return canvas 
+
+
