@@ -14,24 +14,26 @@ class Strokes():
 
     def get_strokes(self):
 
-        return self.strokes
+        new_stroke = self.strokes.detach()
 
-    def draw_new_line(self, x1, y1, x2, y2):
+        new_stroke[:, 0] /= self.width
+        new_stroke[:, 1] /= self.height
+        new_stroke[:, 2] /= self.width
+        new_stroke[:, 3] /= self.height
 
-        x1 = x1 / self.width
-        x2 = x2 / self.width
-        y1 = y1 / self.height
-        y2 = y2 / self.height
+        return new_stroke
 
-        new_stroke = torch.tensor([[x1, y1, x2, y2]], dtype=torch.float32)
+    def draw_new_line(self, new_stroke):
+
+        new_stroke = new_stroke.unsqueeze(0)
         self.strokes = torch.concat([self.strokes, new_stroke], dim=0)
 
-    def draw(self, x1, y1, x2, y2, new_line: bool = False):
+    def draw(self, new_stroke, new_line: bool = False):
 
         last_index,_ = self.strokes.shape
 
         if new_line or last_index == 0: 
-            self.draw_new_line(x1, y1, x2, y2)
+            self.draw_new_line(new_stroke)
 
         else:
             last_x, last_y = self.strokes[last_index-1, 2:4]
@@ -39,16 +41,20 @@ class Strokes():
             last_x = last_x.item()
             last_y = last_y.item()
 
-            last_x *= self.width
-            last_y *= self.height
+            start_x = new_stroke[0].item()
+            start_y = new_stroke[1].item()
 
-            self.draw_new_line(last_x, last_y, x1, y1)
-            self.draw_new_line(x1, y1, x2, y2)
+            connecting_line = torch.tensor([last_x, last_y, start_x, start_y])
 
-    def canvas(self, thickness=0.01):
+            self.draw_new_line(connecting_line)
+            self.draw_new_line(new_stroke)
+
+    def canvas(self, thickness=0.005):
+
+        strokes = self.get_strokes()
 
         return render_lines(
-            strokes=self.strokes, 
+            strokes=strokes, 
             height=self.height, 
             width=self.width, 
             brush_thickness=thickness,

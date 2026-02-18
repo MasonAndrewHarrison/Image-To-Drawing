@@ -39,6 +39,7 @@ def render_lines(strokes, height, width, brush_thickness = 0.01):
 
         canvas = torch.clamp(canvas + brightness, 0, 1)
 
-    return canvas 
+
+    return 1 - canvas 
 
 
