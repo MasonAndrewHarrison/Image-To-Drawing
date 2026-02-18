@@ -25,6 +25,8 @@ def render_lines(strokes, height, width, brush_thickness = 0.01):
 
         # t = (AP→ · AB→) / (||AB→||²) 
         t = (vector_ap_x * vector_ab_x + vector_ap_y * vector_ab_y) / vector_ab_length_squared
+        
+        # This keeps the t value in between A and B
         t = t.clamp(0, 1)
 
         # AT→ = A + t * AB→
