@@ -3,6 +3,7 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 from differentiable_rasterizer import render_lines_sdf, render_lines_sdf_batched
 import random
+import time
 
 class Strokes():
 
@@ -64,7 +65,8 @@ class Strokes():
     def render(self):
 
         canvas = self.canvas()
-        canvas = canvas[36, :, :, :]
+        print(canvas.shape)
+        canvas = canvas[31, :, :]
         canvas = canvas.squeeze(0).detach().cpu()
 
         plt.imshow(canvas, cmap='grey')
@@ -112,9 +114,17 @@ if __name__ == "__main__":
 
     strokes.draw(stroke)
 
+    dummy_strokes = torch.rand(10, 6).to('cuda')
+    render_lines_sdf(dummy_strokes, 300, 300)
+    torch.cuda.synchronize()
+
+    start = time.time()
+
     canvas = strokes.canvas()
 
-    print(canvas.shape)
+    end = time.time()
+
+    print(f"Time to generate canvas: {(end - start):.4f} seconds.")
 
     print(f"Check does grads work with 'draw.py' pipe line: {canvas.requires_grad}")
     print(f"Check does cuda work with 'draw.py' pipe line: {canvas.device.__str__()[:-2] == 'cuda'} || device used: {canvas.device}")
