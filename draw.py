@@ -29,7 +29,6 @@ class Strokes():
     def draw_new_line(self, new_stroke):
 
         new_stroke = new_stroke.unsqueeze(1)
-        print(new_stroke.shape, self.strokes.shape)
         self.strokes = torch.concat([self.strokes, new_stroke], dim=1)
 
     def draw(self, new_stroke, new_line: bool = False):
@@ -65,8 +64,7 @@ class Strokes():
     def render(self):
 
         canvas = self.canvas()
-        print(canvas.shape)
-        canvas = canvas[31, :, :]
+        canvas = canvas[-1, :, :]
         canvas = canvas.squeeze(0).detach().cpu()
 
         plt.imshow(canvas, cmap='grey')
@@ -75,7 +73,6 @@ class Strokes():
     def __str__(self):
 
         return self.strokes.__str__()
-
 
 if __name__ == "__main__":
 
