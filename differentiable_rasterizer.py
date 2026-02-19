@@ -2,17 +2,18 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 
-def render_lines(strokes, height, width, brush_thickness = 0.01):
+def render_lines(strokes, height, width):
 
-    canvas = torch.zeros(1, height, width)
-    sigma = brush_thickness
+    device = strokes.device
 
-    pixel_x = torch.linspace(0, 1, width).view(1, -1).expand(height, width)  
-    pixel_y = torch.linspace(0, 1, height).view(-1, 1).expand(height, width)  
+    canvas = torch.zeros(1, height, width).to(device)
+
+    pixel_x = torch.linspace(0, 1, width).view(1, -1).expand(height, width).to(device)
+    pixel_y = torch.linspace(0, 1, height).view(-1, 1).expand(height, width).to(device)
 
     for stroke in strokes:
 
-        x1, y1, x2, y2 = stroke
+        x1, y1, x2, y2, sigma, radius = stroke
 
         # AB→ = B - A
         vector_ab_x = x2 - x1
@@ -36,12 +37,16 @@ def render_lines(strokes, height, width, brush_thickness = 0.01):
         # distance = √( (P_x - AT→_x)² + (P_y - AT→_y)² )
         distance = torch.sqrt((pixel_x - vector_at_x)**2 + (pixel_y - vector_at_y)**2 + 1e-8)
 
-        # brightness = e^( -distance² / 2σ²)
-        brightness = torch.exp(-distance**2 / (2 * sigma**2))
+        # Sign Distance Function
+        sdf = distance - radius
+        sdf = sdf.clamp(min=0)
 
-        canvas = torch.clamp(canvas + brightness, 0, 1)
+        # g(sdf) = e^( -sdf² / 2σ²)
+        gaussian_sdf = torch.exp(-sdf**2 / (2 * sigma**2))
+
+        canvas = torch.clamp(canvas + gaussian_sdf, 0, 1)
 
 
-    return 1 - canvas 
+    return 1 - canvas
 
 

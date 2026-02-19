@@ -6,7 +6,7 @@ import filter
 
 class Model(nn.Module):
 
-    def __init__(self, in_channels: int = 3, out_features: int = 6, features: int = 16):
+    def __init__(self, in_channels: int = 3, out_features: int = 8, features: int = 16):
         super(Model, self).__init__()
 
         self.features = features
