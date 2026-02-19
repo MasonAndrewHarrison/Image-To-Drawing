@@ -46,25 +46,22 @@ for epoch in range(epochs):
 
     for i, (image,_) in enumerate(loader):
 
-        strokes = Strokes(height, width, device="cpu")
+        strokes = Strokes(height, width, device=device)
         images = image.to(device)
 
         for i in range(lines_drawn):
 
             output = model(images)
-            print(output.requires_grad)
-            stroke = output[1, 0:6].cpu()
+            stroke = output[1, 0:6]
             stroke[0] = stroke[0]+1 * random.randint(0, width)
             stroke[1] = stroke[1]+1 * random.randint(0, height)
             stroke[2] = stroke[2]+1 * random.randint(0, width)
             stroke[3] = stroke[3]+1 * random.randint(0, height)
             stroke[4] = (stroke[4]/1000)+1 * random.uniform(0.005, 0.02)
             stroke[5] = (stroke[5]/1000)+1 * random.uniform(0.005, 0.02)
-            print(stroke.requires_grad)
             strokes.draw(stroke)
 
         canvas = strokes.canvas()
-        print(canvas.shape, type(canvas), type(canvas[0, 0, 0]))
         print(canvas.requires_grad)
         strokes.render()
 

@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 
-def render_lines(strokes, height, width):
+
+def render_lines_sdf(strokes: torch.Tensor, height: int, width: int) -> torch.Tensor:
 
     device = strokes.device
 
@@ -13,7 +14,12 @@ def render_lines(strokes, height, width):
 
     for stroke in strokes:
 
-        x1, y1, x2, y2, sigma, radius = stroke
+        x1 = stroke[0]
+        y1 = stroke[1]
+        x2 = stroke[2]
+        y2 = stroke[3]
+        sigma = stroke[4]
+        radius = stroke[5]
 
         # AB→ = B - A
         vector_ab_x = x2 - x1
@@ -49,4 +55,10 @@ def render_lines(strokes, height, width):
 
     return 1 - canvas
 
+def render_lines_sdf_batched(strokes, height, width):
 
+    all_canvas = torch.func.vmap(
+        lambda stroke: render_lines_sdf(stroke, height, width)
+    )(strokes)
+
+    return all_canvas
