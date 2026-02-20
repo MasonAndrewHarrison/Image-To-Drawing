@@ -61,7 +61,7 @@ class Model(nn.Module):
 
         x = self.shared_mpls(x)
 
-        x[:,0:1] = F.tanh(x[:,0:1])
+        x = F.sigmoid(x)
 
         return x
 

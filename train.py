@@ -18,7 +18,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 height = 240
 width  = 320
-batch_size = 32
+batch_size = 16
 learning_rate = 5e-3
 epochs = 1
 lines_drawn = 10
@@ -58,7 +58,8 @@ for epoch in range(epochs):
             output[:, 3] = output[:, 3]+1 * random.randint(0, height)
             output[:, 4] = (output[:, 4]/1000)+1 * random.uniform(0.005, 0.02)
             output[:, 5] = (output[:, 5]/1000)+1 * random.uniform(0.005, 0.02)
-            strokes.draw(output[:, 0:6])
+            output[:, 6] = output[:, 6]+1 * random.randint(0, 1)
+            strokes.draw(output[:, 0:7])
 
         canvas = strokes.canvas()
         strokes.render()

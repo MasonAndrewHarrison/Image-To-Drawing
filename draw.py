@@ -12,8 +12,9 @@ class Strokes():
         self.width = width
         self.height = height
         self.batch_size = batch_size
+        self.device = device
 
-        self.strokes = torch.zeros(batch_size, 0, 6).to(device)
+        self.strokes = torch.zeros(batch_size, 0, 7).to(device)
 
     def get_strokes(self):
 
@@ -26,7 +27,7 @@ class Strokes():
 
         return new_stroke
 
-    def draw_new_line(self, new_stroke):
+    def _draw_new_line(self, new_stroke):
 
         new_stroke = new_stroke.unsqueeze(1)
         self.strokes = torch.concat([self.strokes, new_stroke], dim=1)
@@ -36,7 +37,9 @@ class Strokes():
         _,last_index,_ = self.strokes.shape
 
         if new_line or last_index == 0: 
-            self.draw_new_line(new_stroke)
+
+            new_stroke[:, 6] = 1
+            self._draw_new_line(new_stroke)
 
         else:
 
@@ -45,11 +48,14 @@ class Strokes():
             last_xy2 = last_stroke[:, 2:4]
             current_xy1 = new_stroke[:, 0:2]
             avg_sig_r = (last_stroke[:, 4:6] + new_stroke[:, 4:6]) / 2
+            opacity = new_stroke[:, 6].unsqueeze(1)
 
-            connecting_stroke = torch.concat([last_xy2, current_xy1, avg_sig_r], dim=1)
+            connecting_stroke = torch.cat([last_xy2, current_xy1, avg_sig_r, opacity], dim=1)
 
-            self.draw_new_line(connecting_stroke)
-            self.draw_new_line(new_stroke)
+            new_stroke = torch.cat([new_stroke[:, :6], new_stroke[:, 6].unsqueeze(1) + 2], dim=1)
+
+            self._draw_new_line(connecting_stroke)
+            self._draw_new_line(new_stroke)
 
     def canvas(self):
 
@@ -78,40 +84,43 @@ if __name__ == "__main__":
 
     strokes = Strokes(64, 300, 300, device="cuda")
 
-    stroke1 = torch.zeros(32, 6).to("cuda")
+    stroke1 = torch.zeros(32, 7).to("cuda")
     stroke1[:, 0] = 50
     stroke1[:, 1] = 50
     stroke1[:, 2] = 200
     stroke1[:, 3] = 200
     stroke1[:, 4] = 0.006
     stroke1[:, 5] = 0.006
+    stroke1[:, 6] = -0.5
     stroke1.requires_grad_(True)
 
-    stroke2 = torch.zeros(32, 6).to("cuda")
+    stroke2 = torch.zeros(32, 7).to("cuda")
     stroke2[:, 0] = 50
     stroke2[:, 1] = 50
     stroke2[:, 2] = 100
     stroke2[:, 3] = 100
     stroke2[:, 4] = 0.006
     stroke2[:, 5] = 0.006
+    stroke2[:, 6] = -0.5
     stroke2.requires_grad_(True)
 
     stroke = torch.concat([stroke1, stroke2], dim=0)
 
     strokes.draw(stroke)
 
-    stroke = torch.zeros(64, 6).to("cuda")
+    stroke = torch.zeros(64, 7).to("cuda")
     stroke[:, 0] = 50
     stroke[:, 1] = 200
     stroke[:, 2] = 200
     stroke[:, 3] = 50
     stroke[:, 4] = 0.016
     stroke[:, 5] = 0.016
+    stroke[:, 6] = 0.5
     stroke.requires_grad_(True)
 
     strokes.draw(stroke)
 
-    dummy_strokes = torch.rand(10, 6).to('cuda')
+    dummy_strokes = torch.rand(10, 7).to('cuda')
     render_lines_sdf(dummy_strokes, 300, 300)
     torch.cuda.synchronize()
 

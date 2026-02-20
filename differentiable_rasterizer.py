@@ -18,6 +18,7 @@ def render_lines_sdf(strokes: torch.Tensor, height: int, width: int) -> torch.Te
     y2 = strokes[:, 3].view(-1, 1, 1)
     sigma = strokes[:, 4].view(-1, 1, 1)
     radius = strokes[:, 5].view(-1, 1, 1)
+    opacity = strokes[:, 6].view(-1, 1, 1)
 
     # AB→ = B - A
     vector_ab_x = x2 - x1
@@ -47,6 +48,7 @@ def render_lines_sdf(strokes: torch.Tensor, height: int, width: int) -> torch.Te
 
     # g(sdf) = e^( -sdf² / 2σ²)
     gaussian_sdf = torch.exp(-sdf**2 / (2 * sigma**2))
+    gaussian_sdf = gaussian_sdf * opacity
 
     canvas = gaussian_sdf.sum(dim=0).clamp(0, 1)
 
