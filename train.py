@@ -21,7 +21,7 @@ width  = 320
 batch_size = 16
 learning_rate = 5e-3
 epochs = 1
-lines_drawn = 10
+lines_drawn = 3
 
 
 transforms = transforms.Compose([transforms.ToTensor()])
@@ -59,7 +59,8 @@ for epoch in range(epochs):
             output[:, 4] = (output[:, 4]/1000)+1 * random.uniform(0.005, 0.02)
             output[:, 5] = (output[:, 5]/1000)+1 * random.uniform(0.005, 0.02)
             output[:, 6] = output[:, 6]+1 * random.randint(0, 1)
-            strokes.draw(output[:, 0:7])
+            
+            strokes.draw(output)
 
         canvas = strokes.canvas()
         strokes.render()
