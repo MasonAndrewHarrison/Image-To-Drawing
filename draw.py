@@ -32,7 +32,7 @@ class Strokes():
 
     def _draw_new_line(self, new_stroke):
 
-        new_stroke = new_stroke.unsqueeze(1).detach()
+        new_stroke = new_stroke.unsqueeze(1)
         self.strokes = torch.concat([self.strokes, new_stroke], dim=1)
 
     def draw(self, new_stroke, new_line: bool = False):
@@ -45,7 +45,7 @@ class Strokes():
                 new_stroke[:, :6],
                 (new_stroke[:, 6] + 1).unsqueeze(1)
             ], dim=1)
-            
+
             self._draw_new_line(opacity_adjusted)
 
         else:
@@ -96,7 +96,7 @@ class Strokes():
 
         return ab_lerp
 
-    def line_loss(self, prefered_ld, index):
+    def _line_loss(self, prefered_ld, index):
 
         criterion = nn.MSELoss()
 
@@ -118,6 +118,42 @@ class Strokes():
         loss = criterion(weight_dist, prefered_ld)
 
         return loss
+
+    def _sigma_loss(self, prefered_sigma, index):
+
+        criterion = nn.MSELoss()
+
+        simga = self.strokes[:, index, 4]
+
+        return criterion(simga, prefered_sigma)
+
+    def _radius_loss(self, prefered_radius, index):
+
+        criterion = nn.MSELoss()
+
+        radius = self.strokes[:, index, 5]
+
+        return criterion(radius, prefered_radius)
+
+    def loss(self, prefered_distance, prefered_sigma, prefered_radius):
+
+        loss_distance2 = self._line_loss(prefered_distance, -2)
+        loss_distance1 = self._line_loss(prefered_distance, -1)
+        loss_simga = self._sigma_loss(prefered_sigma, -1)
+        loss_radius = self._radius_loss(prefered_radius, -1)
+
+        loss = torch.stack([
+            loss_distance1,
+            loss_distance2,
+            loss_simga,
+            loss_radius,
+        ])
+
+        return loss.sum()/4
+
+    def forget_grads(self):
+
+        self.strokes = self.strokes.detach()
 
 if __name__ == "__main__":
 

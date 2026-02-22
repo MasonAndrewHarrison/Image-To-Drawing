@@ -84,25 +84,16 @@ for epoch in range(epochs):
         
             print("loss: ", loss)'''
 
-            x_dist = output[:, 2] - output[:, 0]
-            y_dist = output[:, 3] - output[:, 1]
-            distance = torch.sqrt(x_dist**2 + y_dist**2 + 1e-8)
+            strokes.forget_grads()
+            strokes.draw(output)
 
-            loss_d = criterion(distance, prefered_ld)
-            loss_sig = criterion(output[:, 4], prefered_sig)
-            loss_r = criterion(output[:, 5], prefered_r)
-
-            loss = (loss_d + loss_sig + loss_r)/3
-
+ 
+            loss = strokes.loss(prefered_ld, prefered_sig, prefered_r)
 
             print(f"loss: {loss}")
             
             loss.backward()
             optimizer.step()
-
-            with torch.no_grad():
-                print("output sample:", output[0])
-                strokes.draw(output.detach())
 
 
 
