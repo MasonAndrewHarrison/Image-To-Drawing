@@ -7,3 +7,4 @@ nms.py
 temp/
 dataset_images/
 *.pth
+test.py

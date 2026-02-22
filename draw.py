@@ -20,16 +20,19 @@ class Strokes():
 
         new_stroke = self.strokes.clone()
 
-        new_stroke[:, :, 0] /= self.width
-        new_stroke[:, :, 1] /= self.height
-        new_stroke[:, :, 2] /= self.width
-        new_stroke[:, :, 3] /= self.height
+        #new_stroke[:, :, 0] /= self.width
+        #new_stroke[:, :, 1] /= self.height
+        #new_stroke[:, :, 2] /= self.width
+        #new_stroke[:, :, 3] /= self.height
+
+        scale = new_stroke.new_tensor([self.width, self.height, self.width, self.height, 1, 1, 1])
+        new_stroke = new_stroke / scale
 
         return new_stroke
 
     def _draw_new_line(self, new_stroke):
 
-        new_stroke = new_stroke.unsqueeze(1)
+        new_stroke = new_stroke.unsqueeze(1).detach()
         self.strokes = torch.concat([self.strokes, new_stroke], dim=1)
 
     def draw(self, new_stroke, new_line: bool = False):
@@ -38,12 +41,16 @@ class Strokes():
 
         if new_line or last_index == 0: 
 
-            new_stroke[:, 6] = 1
-            self._draw_new_line(new_stroke)
+            opacity_adjusted = torch.cat([
+                new_stroke[:, :6],
+                (new_stroke[:, 6] + 1).unsqueeze(1)
+            ], dim=1)
+            
+            self._draw_new_line(opacity_adjusted)
 
         else:
 
-            last_stroke = self.strokes[:, last_index-1, :]
+            last_stroke = self.strokes[:, last_index-1, :].clone()
 
             last_xy2 = last_stroke[:, 2:4]
             current_xy1 = new_stroke[:, 0:2]
@@ -79,6 +86,38 @@ class Strokes():
     def __str__(self):
 
         return self.strokes.__str__()
+
+    # f: ℝ²×[0,1] → [a,b],  f(a,b,α) = (b-a)·α²(3-2α) + a
+    @staticmethod
+    def _lerp(a, b, t):
+
+        lerp_funct = (t**2)*(3-2*t)
+        ab_lerp = (b-a)*lerp_funct + a
+
+        return ab_lerp
+
+    def line_loss(self, prefered_ld, index):
+
+        criterion = nn.MSELoss()
+
+        if self.strokes.shape[1] < index.__abs__():
+            
+            zero_loss = self.strokes.clone().sum() * 0
+            return zero_loss
+
+        stroke = self.strokes[:, index, :].clone()
+        x_dist = stroke[:,2] - stroke[:,0]
+        y_dist = stroke[:,3] - stroke[:,1]
+
+        distance = torch.sqrt(x_dist**2 + y_dist**2 + 1e-8)
+
+        alpha = stroke[:,6].clip(0, 1)
+
+        weight_dist = self._lerp(prefered_ld, distance, alpha)
+
+        loss = criterion(weight_dist, prefered_ld)
+
+        return loss
 
 if __name__ == "__main__":
 

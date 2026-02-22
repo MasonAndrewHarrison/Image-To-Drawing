@@ -24,7 +24,6 @@ class Model(nn.Module):
             self._shared_mlp(features*64, features*16),
             self._shared_mlp(features*16, features),
             self._shared_mlp(features, out_features),
-
         )
 
     def _conv2d_block(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1):
@@ -38,7 +37,7 @@ class Model(nn.Module):
                 padding=padding,
                 bias=True
             ),  
-            nn.LeakyReLU(0.2, inplace=True)
+            nn.LeakyReLU(0.2)
         )
 
     @staticmethod
@@ -46,12 +45,12 @@ class Model(nn.Module):
         
         return nn.Sequential(
             nn.Linear(in_channels, out_channels),
-            nn.ReLU(inplace=True)
+            nn.ReLU()
         )
 
     def forward(self, x):
 
-        batch_size = x.shape[0]
+        batch_size,_,height,width = x.shape
         x = self.conv_layer(x)
 
         x = x.view(batch_size, self.features*64, -1)
@@ -61,9 +60,20 @@ class Model(nn.Module):
 
         x = self.shared_mpls(x)
 
-        x = F.sigmoid(x)
+        x = torch.sigmoid(x)
+
+        format_vector = x.new_tensor([width, height, width, height, 0.01, 0.01, 1])
+
+        x = x * format_vector
 
         return x
+
+
+def initialize_weights(model):
+    for m in model.modules():
+        if isinstance(m, (nn.Conv2d, nn.Linear)):
+            nn.init.kaiming_normal_(m.weight.data, mode='fan_out', nonlinearity='relu')
+
 
 
 if __name__ == "__main__":
