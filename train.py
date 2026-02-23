@@ -23,17 +23,17 @@ width  = 320
 batch_size = 16
 learning_rate = 5e-5
 epochs = 1
-lines_drawn = 12
-prefered_line_dist = 25
-prefered_sigma = 0.005
-prefered_radius = 0.005
+lines_drawn = 20
+prefered_distance_scaler = 25
+prefered_sigma_scaler = 0.005
+prefered_radius_scaler = 0.005
 
 transforms = transforms.Compose([transforms.ToTensor()])
 dataset = ImageFolder(root='dataset_images/', transform=transforms)
 
 loader = DataLoader(
     dataset, 
-    batch_size=batch_size, 
+    batch_size=batch_size,
     shuffle=True,
     pin_memory=True,
 )
@@ -44,22 +44,27 @@ initialize_weights(model)
 
 fixed_image = dataset[0]
 
-prefered_ld = torch.ones(16, device=device) * prefered_line_dist
-prefered_sig = torch.ones(16, device=device) * prefered_sigma
-prefered_r = torch.ones(16, device=device) * prefered_radius
+prefered_distance = torch.ones(16, device=device) * prefered_distance_scaler
+prefered_sigma = torch.ones(16, device=device) * prefered_sigma_scaler
+prefered_radius = torch.ones(16, device=device) * prefered_radius_scaler
 
 scaler = GradScaler(device.__str__())
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
 criterion = nn.MSELoss()
 scaler = GradScaler(device.__str__())
 
+criterion = nn.MSELoss()
+
 for epoch in range(epochs):
     model.train()
 
-    for i, (image,_) in enumerate(loader):
+    for i, (images,_) in enumerate(loader):
 
         strokes = Strokes(batch_size, height, width, device=device)
-        images = image.to(device)
+
+        images = images.to(device)
+        bw_images = images.mean(1).unsqueeze(1).clone().to(device)
+        bw_images = filter.ex_difference_of_gaussians(bw_images)
 
         for _ in range(lines_drawn):
 
@@ -67,30 +72,24 @@ for epoch in range(epochs):
 
             output = model(images)
 
-            '''output[:, 0] = output[:, 0]+random.randint(-50, 50)
-            output[:, 1] = output[:, 1]+random.randint(-50, 50)
-            output[:, 2] = output[:, 2]+random.randint(-50, 50)
-            output[:, 3] = output[:, 3]+random.randint(-50, 50)
-            output[:, 4] = (output[:, 4]/1000)+1 * random.uniform(0.003, 0.01)
-            output[:, 5] = (output[:, 5]/1000)+1 * random.uniform(0.003, 0.01)
-            output[:, 6] = output[:, 6]+1 * random.randint(0, 1)'''
-
-            '''strokes.draw(output)
-
-            line_loss1 = strokes.line_loss(prefered_ld, index=-2) 
-            line_loss2 = strokes.line_loss(prefered_ld, index=-1) 
-
-            loss = (line_loss1 + line_loss2)/2
-        
-            print("loss: ", loss)'''
-
             strokes.forget_grads()
             strokes.draw(output)
 
- 
-            loss = strokes.loss(prefered_ld, prefered_sig, prefered_r)
+            loss = strokes.loss(
+                prefered_distance=prefered_distance,
+                prefered_sigma=prefered_sigma,
+                prefered_radius=prefered_radius,
+            )
 
-            print(f"loss: {loss}")
+            avg_dist = strokes.get_distance(-1).sum()/batch_size
+            print(f"loss: {loss} || average distance: {avg_dist}")
+
+            canvas = strokes.canvas()
+
+            print(f"canvas shape: {canvas.shape} image shape: {bw_images.shape}")
+
+            image_loss = criterion(canvas, bw_images)
+            print(f"image loss: {image_loss}")
             
             loss.backward()
             optimizer.step()

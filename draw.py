@@ -96,6 +96,20 @@ class Strokes():
 
         return ab_lerp
 
+    def get_distance(self, index):
+
+        stroke = self.strokes[:, index, :].clone()
+        x_dist = stroke[:,2] - stroke[:,0]
+        y_dist = stroke[:,3] - stroke[:,1]
+
+        distance = torch.sqrt(x_dist**2 + y_dist**2 + 1e-8) 
+
+        return distance      
+
+    def get_alpha(self, index):
+
+        return self.strokes[:, index ,6].clip(0, 1)
+
     def _line_loss(self, prefered_ld, index):
 
         criterion = nn.MSELoss()
@@ -105,48 +119,66 @@ class Strokes():
             zero_loss = self.strokes.clone().sum() * 0
             return zero_loss
 
-        stroke = self.strokes[:, index, :].clone()
-        x_dist = stroke[:,2] - stroke[:,0]
-        y_dist = stroke[:,3] - stroke[:,1]
+        distance = self.get_distance(index)
 
-        distance = torch.sqrt(x_dist**2 + y_dist**2 + 1e-8)
-
-        alpha = stroke[:,6].clip(0, 1)
-
+        alpha = self.get_alpha(index)
         weight_dist = self._lerp(prefered_ld, distance, alpha)
 
         loss = criterion(weight_dist, prefered_ld)
 
         return loss
 
+    def get_simga(self, index):
+
+        return self.strokes[:, index, 4]
+
     def _sigma_loss(self, prefered_sigma, index):
 
         criterion = nn.MSELoss()
-
-        simga = self.strokes[:, index, 4]
+        simga = self.get_simga(index)
 
         return criterion(simga, prefered_sigma)
+
+    def get_radius(self, index):
+
+        return self.strokes[:, index, 5]
 
     def _radius_loss(self, prefered_radius, index):
 
         criterion = nn.MSELoss()
-
-        radius = self.strokes[:, index, 5]
+        radius = self.get_radius(index)
 
         return criterion(radius, prefered_radius)
 
-    def loss(self, prefered_distance, prefered_sigma, prefered_radius):
+    # θ = arccos( (A→ · B→) / ||A→||*||B→|| )
+    def find_angle(self, x1, y1, x2, y2):
 
-        loss_distance2 = self._line_loss(prefered_distance, -2)
-        loss_distance1 = self._line_loss(prefered_distance, -1)
-        loss_simga = self._sigma_loss(prefered_sigma, -1)
-        loss_radius = self._radius_loss(prefered_radius, -1)
+        dot_product = x1 * x2 + y1 * y2
+        vector1_length = torch.sqrt((x2 - x1)**2 + (y2 -y1)**2 + 1e-8)
+        theda_cos = dot_product / vector1_length
+        #TODO solve the problem that vectors aren't at 0 fix that
+
+        return 0
+
+    def get_line_angle(self, index1, index2):
+
+        xa = self.strokes[:, index-1, 3]
+        ya = self.strokes[:, index-1, 4]
+        xb = self.strokes[:, index, 1]
+        yb = self.strokes[:, index, 2]
+        xc = self.strokes[:, index, 3]
+        yc = self.strokes[:, index, 4]
+
+
+        return 0
+
+    def loss(self,* , prefered_distance, prefered_sigma, prefered_radius):
 
         loss = torch.stack([
-            loss_distance1,
-            loss_distance2,
-            loss_simga,
-            loss_radius,
+            self._line_loss(prefered_distance, -2),
+            self._line_loss(prefered_distance, -1),
+            self._sigma_loss(prefered_sigma, -1),
+            self._radius_loss(prefered_radius, -1),
         ])
 
         return loss.sum()/4
