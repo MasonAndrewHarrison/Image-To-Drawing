@@ -73,29 +73,43 @@ class Strokes():
 
     def render(self, other_image=None):
 
-        canvas = self.canvas()
-        canvas = canvas[-1, :, :]
-        canvas = canvas.squeeze(0).detach().cpu()
-
         if other_image is None:
+
+            canvas = self.canvas()
+            canvas = canvas[-1, :, :]
+            canvas = canvas.squeeze(0).detach().cpu()
 
             plt.imshow(canvas, cmap='grey')
             plt.show()
 
         else:
 
+            canvas = self.canvas()
+            canvas = canvas[-1, :, :].squeeze(0)
             other_image = other_image[-1, :, : ,:].squeeze(0)
+
+            overlap_image = other_image + canvas
+            overlap_image = 5*(overlap_image > .5) + overlap_image
+            overlap_image = overlap_image.detach().cpu()
+
+            canvas = canvas.detach().cpu()
             other_image = other_image.detach().cpu()
 
-            fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+            fig, axes = plt.subplots(1, 3, figsize=(30, 10))
 
             axes[0].imshow(canvas, cmap='grey')
             axes[0].set_title("AI Drawing")
             axes[0].axis('off')
 
-            axes[1].imshow(other_image, cmap='grey')
-            axes[1].set_title("Image with Filter")
+            axes[1].imshow(overlap_image, cmap='grey')
+            axes[1].set_title("Overlap Image")
             axes[1].axis('off')
+
+            axes[2].imshow(other_image, cmap='grey')
+            axes[2].set_title("Image with Filter")
+            axes[2].axis('off')
+
+            
 
             plt.tight_layout()
             plt.show()
@@ -311,7 +325,7 @@ class Strokes():
             self._line_loss(prefered_distance_vec, -1),
             self._sigma_loss(prefered_sigma_vec, -1),
             self._radius_loss(prefered_radius_vec, -1),
-            self._angle_loss(-1),
+            #self._angle_loss(-1),
         ])
 
         return loss.sum()/4

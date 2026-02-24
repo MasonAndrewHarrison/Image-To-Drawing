@@ -38,6 +38,7 @@ class Model(nn.Module):
                 padding=padding,
                 bias=True
             ),  
+            nn.BatchNorm2d(num_features=out_channels),
             nn.LeakyReLU(0.2)
         )
 
@@ -46,6 +47,7 @@ class Model(nn.Module):
         
         return nn.Sequential(
             nn.Linear(in_channels, out_channels),
+            nn.LayerNorm(out_channels),
             nn.ReLU()
         )
 
@@ -63,7 +65,7 @@ class Model(nn.Module):
 
         x = torch.sigmoid(x)
 
-        format_vector = x.new_tensor([width, height, width, height, 0.01, 0.01, 1])
+        format_vector = x.new_tensor([width, height, width, height, 0.005, 0.005, 1])
 
         x = x * format_vector
 

@@ -20,13 +20,13 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 height = 240
 width  = 320
-batch_size = 16
+batch_size = 1
 learning_rate = 5e-6
 epochs = 1
-lines_drawn = 20
-prefered_distance = 25
-prefered_sigma = 0.005
-prefered_radius = 0.005
+lines_drawn = 3
+prefered_distance = 20
+prefered_sigma = 0.001
+prefered_radius = 0.001
 
 transforms = transforms.Compose([transforms.ToTensor()])
 dataset = ImageFolder(root='dataset_images/', transform=transforms)
@@ -73,11 +73,11 @@ for epoch in range(epochs):
                 prefered_distance=prefered_distance,
                 prefered_sigma=prefered_sigma,
                 prefered_radius=prefered_radius,
-            ) * 0.05
+            )
 
             avg_dist = strokes.get_distance(-1).sum()/batch_size
             canvas = strokes.canvas()
-            image_loss = criterion(canvas, bw_images) * 10
+            image_loss = criterion(canvas, bw_images) * 400
 
             print(f"loss: {loss:.4f} Image loss: {image_loss:.4f}")
             loss = loss + image_loss
