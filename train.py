@@ -68,6 +68,7 @@ for epoch in range(epochs):
             strokes.forget_grads()
             strokes.draw(output)
 
+            #TODO gradient explosion issue
             loss = strokes.loss(
                 prefered_distance=prefered_distance,
                 prefered_sigma=prefered_sigma,
