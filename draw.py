@@ -101,7 +101,7 @@ class Strokes():
             axes[0].set_title("AI Drawing")
             axes[0].axis('off')
 
-            axes[1].imshow(overlap_image, cmap='grey')
+            axes[1].imshow(overlap_image)
             axes[1].set_title("Overlap Image")
             axes[1].axis('off')
 
@@ -323,8 +323,8 @@ class Strokes():
         loss = torch.stack([
             self._line_loss(prefered_distance_vec, -2),
             self._line_loss(prefered_distance_vec, -1),
-            self._sigma_loss(prefered_sigma_vec, -1),
-            self._radius_loss(prefered_radius_vec, -1),
+            #self._sigma_loss(prefered_sigma_vec, -1),
+            #self._radius_loss(prefered_radius_vec, -1),
             #self._angle_loss(-1),
         ])
 

@@ -6,7 +6,7 @@ import filter
 
 class Model(nn.Module):
 
-    def __init__(self, in_channels: int = 3, out_features: int = 7, features: int = 16):
+    def __init__(self, in_channels: int = 5, out_features: int = 7, features: int = 16):
         super(Model, self).__init__()
 
         self.features = features
@@ -15,13 +15,12 @@ class Model(nn.Module):
             self._conv2d_block(in_channels=in_channels, out_channels=features, kernel_size=5, stride=1, padding=2),
             self._conv2d_block(in_channels=features, out_channels=features*4, stride=2),
             self._conv2d_block(in_channels=features*4, out_channels=features*8, stride=2),
-            self._conv2d_block(in_channels=features*8, out_channels=features*16, stride=4),
-            self._conv2d_block(in_channels=features*16, out_channels=features*64, stride=1),
+            self._conv2d_block(in_channels=features*8, out_channels=features*16, stride=1),
         )
 
         self.shared_mpls = nn.Sequential(
-            self._shared_mlp(features*64*2, features*64),
-            self._shared_mlp(features*64, features*16),
+            self._shared_mlp(features*16*2, features*16),
+            self._shared_mlp(features*16, features*16),
             self._shared_mlp(features*16, features*4),
             self._shared_mlp(features*4, features),
             nn.Linear(features, out_features)
@@ -39,7 +38,7 @@ class Model(nn.Module):
                 bias=True
             ),  
             nn.BatchNorm2d(num_features=out_channels),
-            nn.LeakyReLU(0.2)
+            nn.ReLU()
         )
 
     @staticmethod
@@ -56,7 +55,7 @@ class Model(nn.Module):
         batch_size,_,height,width = x.shape
         x = self.conv_layer(x)
 
-        x = x.view(batch_size, self.features*64, -1)
+        x = x.view(batch_size, self.features*16, -1)
         x_max = torch.max(x, 2)[0]
         x_avg = torch.mean(x, 2)
         x = torch.concat([x_max, x_avg], dim=1)
@@ -82,7 +81,7 @@ def initialize_weights(model):
 
 if __name__ == "__main__":
 
-    random = torch.randn(1, 1, 64, 64)
+    random = torch.randn(1, 5, 64, 64)
     print(random.shape)
     model = Model()
     out = model(random)
