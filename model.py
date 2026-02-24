@@ -22,8 +22,9 @@ class Model(nn.Module):
         self.shared_mpls = nn.Sequential(
             self._shared_mlp(features*64*2, features*64),
             self._shared_mlp(features*64, features*16),
-            self._shared_mlp(features*16, features),
-            self._shared_mlp(features, out_features),
+            self._shared_mlp(features*16, features*4),
+            self._shared_mlp(features*4, features),
+            nn.Linear(features, out_features)
         )
 
     def _conv2d_block(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1):
@@ -72,8 +73,9 @@ class Model(nn.Module):
 def initialize_weights(model):
     for m in model.modules():
         if isinstance(m, (nn.Conv2d, nn.Linear)):
-            nn.init.kaiming_normal_(m.weight.data, mode='fan_out', nonlinearity='relu')
-
+            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0.5) 
 
 
 if __name__ == "__main__":

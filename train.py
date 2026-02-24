@@ -21,12 +21,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 height = 240
 width  = 320
 batch_size = 16
-learning_rate = 5e-5
+learning_rate = 5e-6
 epochs = 1
 lines_drawn = 20
-prefered_distance_scaler = 25
-prefered_sigma_scaler = 0.005
-prefered_radius_scaler = 0.005
+prefered_distance = 25
+prefered_sigma = 0.005
+prefered_radius = 0.005
 
 transforms = transforms.Compose([transforms.ToTensor()])
 dataset = ImageFolder(root='dataset_images/', transform=transforms)
@@ -44,15 +44,8 @@ initialize_weights(model)
 
 fixed_image = dataset[0]
 
-prefered_distance = torch.ones(16, device=device) * prefered_distance_scaler
-prefered_sigma = torch.ones(16, device=device) * prefered_sigma_scaler
-prefered_radius = torch.ones(16, device=device) * prefered_radius_scaler
-
 scaler = GradScaler(device.__str__())
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
-criterion = nn.MSELoss()
-scaler = GradScaler(device.__str__())
-
 criterion = nn.MSELoss()
 
 for epoch in range(epochs):
@@ -64,7 +57,7 @@ for epoch in range(epochs):
 
         images = images.to(device)
         bw_images = images.mean(1).unsqueeze(1).clone().to(device)
-        bw_images = filter.ex_difference_of_gaussians(bw_images)
+        bw_images = filter.ex_difference_of_gaussians(bw_images).float()
 
         for _ in range(lines_drawn):
 
@@ -79,25 +72,26 @@ for epoch in range(epochs):
                 prefered_distance=prefered_distance,
                 prefered_sigma=prefered_sigma,
                 prefered_radius=prefered_radius,
-            )
+            ) * 0.05
 
             avg_dist = strokes.get_distance(-1).sum()/batch_size
-            print(f"loss: {loss} || average distance: {avg_dist}")
-
             canvas = strokes.canvas()
+            image_loss = criterion(canvas, bw_images) * 10
 
-            print(f"canvas shape: {canvas.shape} image shape: {bw_images.shape}")
+            print(f"loss: {loss:.4f} Image loss: {image_loss:.4f}")
+            loss = loss + image_loss
 
-            image_loss = criterion(canvas, bw_images)
-            print(f"image loss: {image_loss}")
+            
             
             loss.backward()
+            total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.1)
+            print(f"grad norm: {total_norm:.4f}")
             optimizer.step()
 
-
+        angle = strokes.get_line_angle(-1)
 
 
         canvas = strokes.canvas()
-        strokes.render()
+        strokes.render(other_image=bw_images)
 
             
