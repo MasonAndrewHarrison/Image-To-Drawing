@@ -6,23 +6,30 @@ import filter
 
 class Model(nn.Module):
 
-    def __init__(self, in_channels: int = 5, out_features: int = 7, features: int = 16):
+    def __init__(self, in_channels: int = 3, out_features: int = 7, features: int = 16):
         super(Model, self).__init__()
 
         self.features = features
 
         self.conv_layer = nn.Sequential(
             self._conv2d_block(in_channels=in_channels, out_channels=features, kernel_size=5, stride=1, padding=2),
-            self._conv2d_block(in_channels=features, out_channels=features*4, stride=2),
-            self._conv2d_block(in_channels=features*4, out_channels=features*8, stride=2),
-            self._conv2d_block(in_channels=features*8, out_channels=features*16, stride=1),
+            self._conv2d_block(in_channels=features, out_channels=features*4, kernel_size=5, stride=3),
+            self._conv2d_block(in_channels=features*4, out_channels=features*8, kernel_size=5, stride=3),
+            self._conv2d_block(in_channels=features*8, out_channels=features*32, kernel_size=5, stride=1),
         )
 
+        self.strokes_mpls = nn.Sequential(
+            self._stroke_block(in_channels=out_features, out_channels=features*64),
+            self._stroke_block(in_channels=features*64, out_channels=features*64),
+        )
+
+        # in_channel = (conv layers out channels) * 2 + (strokes mlps out channels) * 2
+        first_in_channel = (features * 32) * 2 + (features * 64) * 2
+
         self.shared_mpls = nn.Sequential(
-            self._shared_mlp(features*16*2, features*16),
-            self._shared_mlp(features*16, features*16),
-            self._shared_mlp(features*16, features*4),
-            self._shared_mlp(features*4, features),
+            self._shared_mlp(first_in_channel, features*32),
+            self._shared_mlp(features*32, features*16),
+            self._shared_mlp(features*16, features),
             nn.Linear(features, out_features)
         )
 
@@ -41,6 +48,13 @@ class Model(nn.Module):
             nn.ReLU()
         )
 
+    def _stroke_block(self, in_channels, out_channels):
+
+        return nn.Sequential(
+            nn.Linear(in_channels, out_channels),
+            nn.ReLU()
+        )
+
     @staticmethod
     def _shared_mlp(in_channels, out_channels):
         
@@ -52,23 +66,31 @@ class Model(nn.Module):
 
     def forward(self, x):
 
-        batch_size,_,height,width = x.shape
-        x = self.conv_layer(x)
+        image, strokes = x
 
-        x = x.view(batch_size, self.features*16, -1)
-        x_max = torch.max(x, 2)[0]
-        x_avg = torch.mean(x, 2)
-        x = torch.concat([x_max, x_avg], dim=1)
+        batch_size,_,height,width = image.shape
+        image = self.conv_layer(image)
 
-        x = self.shared_mpls(x)
+        image = image.view(batch_size, self.features*32, -1)
 
-        x = torch.sigmoid(x)
+        strokes = self.strokes_mpls(strokes)
+        strokes_max = torch.max(strokes, 1)[0]
+        strokes_avg = torch.mean(strokes, 1)
+        strokes = torch.concat([strokes_max, strokes_avg], dim=1)
 
-        format_vector = x.new_tensor([width, height, width, height, 0.005, 0.005, 1])
+        x_max = torch.max(image, 2)[0]
+        x_avg = torch.mean(image, 2)
+        image = torch.concat([x_max, x_avg], dim=1)
 
-        x = x * format_vector
+        combined_input = torch.concat([image, strokes], dim=1)
 
-        return x
+        out = self.shared_mpls(combined_input)
+        out = torch.sigmoid(out)
+
+        format_vector = out.new_tensor([width, height, width, height, 0.005, 0.005, 1])
+        out = out * format_vector
+
+        return out
 
 
 def initialize_weights(model):
@@ -81,9 +103,11 @@ def initialize_weights(model):
 
 if __name__ == "__main__":
 
-    random = torch.randn(1, 5, 64, 64)
+    random = torch.randn(1, 3, 64, 64)
+    random_strokes = torch.randn(1, 10, 7)
     print(random.shape)
     model = Model()
-    out = model(random)
+    input_values = (random, random_strokes)
+    out = model(input_values)
     print(out.shape)
     torch.save(model.state_dict(), "Model_Weights.pth")

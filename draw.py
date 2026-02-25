@@ -295,12 +295,15 @@ class Strokes():
 
         angle_loss2 = criterion(
             weight_angle2, 
-            torch.ones_like(weight_angle1)
+            torch.ones_like(weight_angle2)
         )
 
-        avg_angle = (angle1 + angle2) / 2
+        avg_angle = (angle_loss1 + angle_loss2) / 2
 
-        return avg_angle.mean()
+
+        test_loss = 2 - (angle1 + angle2)
+        #print(test_loss)
+        return test_loss
 
 
     def loss(self,* , prefered_distance, prefered_sigma, prefered_radius):
@@ -321,11 +324,11 @@ class Strokes():
         ) * prefered_radius
 
         loss = torch.stack([
-            self._line_loss(prefered_distance_vec, -2),
-            self._line_loss(prefered_distance_vec, -1),
+            #self._line_loss(prefered_distance_vec, -2),
+            #self._line_loss(prefered_distance_vec, -1),
             #self._sigma_loss(prefered_sigma_vec, -1),
             #self._radius_loss(prefered_radius_vec, -1),
-            #self._angle_loss(-1),
+            self._angle_loss(-1)*5,
         ])
 
         return loss.sum()/4

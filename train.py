@@ -21,9 +21,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 height = 240
 width  = 320
 batch_size = 1
-learning_rate = 1e-6
+learning_rate = 5e-3
 epochs = 1
-lines_drawn = 10
+lines_drawn = 30
 prefered_distance = 20
 prefered_sigma = 0.001
 prefered_radius = 0.001
@@ -57,48 +57,55 @@ for epoch in range(epochs):
 
         images = images.to(device)
         images = fixed_image.to(device)
-        print(images.shape)
         bw_images = images.mean(1).unsqueeze(1).clone().to(device)
         bw_images = filter.ex_difference_of_gaussians(bw_images).float()
 
-        for _ in range(lines_drawn):
+        for j in range(lines_drawn):
 
             model.zero_grad()
             index_matrix = torch.ones_like(bw_images) * i
 
-            combined_input = torch.cat([
-                images, 
+            combined_image = torch.cat([
+                bw_images, 
                 strokes.canvas().detach(),
                 index_matrix,
             ], dim=1)
 
+            strokes_copy = strokes.strokes.detach()
+
+            if strokes_copy.shape[1] == 0:
+                strokes_copy = torch.ones((1, 1, 7), device=device)
+
+            combined_input = (combined_image, strokes_copy)
             output = model(combined_input)
 
             strokes.forget_grads()
             strokes.draw(output)
 
-            #TODO gradient explosion issue
+            #TODO fix angle loss 
             loss = strokes.loss(
                 prefered_distance=prefered_distance,
                 prefered_sigma=prefered_sigma,
                 prefered_radius=prefered_radius,
-            ) * 0.1
+            )
 
             avg_dist = strokes.get_distance(-1).sum()/batch_size
             canvas = strokes.canvas()
-            image_loss = criterion(canvas, bw_images) * 40
-            loss = loss + image_loss
+            image_loss = criterion(canvas, bw_images) * 100
+            angle_loss = strokes._angle_loss(-1)
 
-            
-            
             loss.backward()
             total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.1)
-            print(f"loss: {loss:.4f} Image loss: {image_loss:.4f} grad norm: {total_norm:.4f}")
+
+            if j % 5 == 0:
+                print(f"loss: {loss.item():.4f} Image loss: {image_loss.item():.4f} Angle loss: {angle_loss.item():.4f} Grad norm: {total_norm:.4f}")
+
             optimizer.step()
 
         
-        if i % 27 == 0:
+        if i % 20 == 0:
             angle = strokes.get_line_angle(-1)
+            print(angle)
             strokes.render(other_image=bw_images)
 
             
