@@ -12,13 +12,13 @@ def render_lines_sdf(strokes: torch.Tensor, height: int, width: int) -> torch.Te
     pixel_x = torch.linspace(0, 1, width, device=device).view(1, 1, -1)   # (1, 1, W)
     pixel_y = torch.linspace(0, 1, height, device=device).view(1, -1, 1)  # (1, H, 1)
 
-    x1 = strokes[:, 0].view(-1, 1, 1)
-    y1 = strokes[:, 1].view(-1, 1, 1)
-    x2 = strokes[:, 2].view(-1, 1, 1)
-    y2 = strokes[:, 3].view(-1, 1, 1)
-    sigma = strokes[:, 4].view(-1, 1, 1)
-    radius = strokes[:, 5].view(-1, 1, 1)
-    opacity = strokes[:, 6].view(-1, 1, 1)
+    x1 = strokes[:-1, 0].view(-1, 1, 1)
+    y1 = strokes[:-1, 1].view(-1, 1, 1)
+    x2 = strokes[1:, 0].view(-1, 1, 1)
+    y2 = strokes[1:, 1].view(-1, 1, 1)
+    sigma = strokes[1:, 2].view(-1, 1, 1)
+    radius = strokes[1:, 3].view(-1, 1, 1)
+    opacity = strokes[1:, 4].view(-1, 1, 1)
 
     # AB→ = B - A
     vector_ab_x = x2 - x1
