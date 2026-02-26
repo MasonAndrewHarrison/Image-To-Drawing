@@ -62,10 +62,11 @@ def render_lines_sdf(strokes: torch.Tensor, height: int, width: int, for_model: 
 
         canvas = sdf
 
-    canvas = canvas.sum(dim=0).clamp(0, 1)
+    canvas = canvas.sum(dim=0)
     canvas = canvas.unsqueeze(0)
 
     if not for_model:
+        canvas = canvas.clamp(0, 1)
         canvas = 1 - canvas
 
 

@@ -72,19 +72,19 @@ class Strokes():
 
             fig, axes = plt.subplots(1, 4, figsize=(30, 10))
 
-            axes[0].imshow(canvas, cmap='grey', vmin=0, vmax=1)
-            axes[0].set_title("By Distance AI Drawing")
+            axes[0].imshow(canvas, cmap='grey')
+            axes[0].set_title("By SDF AI Drawing")
             axes[0].axis('off')
 
             axes[1].imshow(canvas_drawing, cmap='grey', vmin=0, vmax=1)
-            axes[1].set_title("SDF Gaussian AI Drawing")
+            axes[1].set_title("SDF and Gaussian AI Drawing")
             axes[1].axis('off')
 
             axes[2].imshow(overlap_image)
             axes[2].set_title("Overlap Image")
             axes[2].axis('off')
 
-            axes[3].imshow(other_image, cmap='grey', vmin=0, vmax=1)
+            axes[3].imshow(other_image, cmap='grey')
             axes[3].set_title("Image with Filter")
             axes[3].axis('off')
 
@@ -345,8 +345,8 @@ if __name__ == "__main__":
     strokes.draw(stroke)
 
     stroke = torch.zeros(64, 5).to("cuda")
-    stroke[:, 0] = 300
-    stroke[:, 1] = 300
+    stroke[:, 0] = 240
+    stroke[:, 1] = 240
     stroke[:, 2] = 0.006
     stroke[:, 3] = 0.006
     stroke[:, 4] = 1
@@ -355,7 +355,7 @@ if __name__ == "__main__":
     strokes.draw(stroke)
 
     stroke = torch.zeros(64, 5).to("cuda")
-    stroke[:, 0] = 300
+    stroke[:, 0] = 290
     stroke[:, 1] = 0
     stroke[:, 2] = 0.006
     stroke[:, 3] = 0.006

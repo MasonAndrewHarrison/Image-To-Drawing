@@ -25,8 +25,8 @@ learning_rate = 5e-3
 epochs = 1
 lines_drawn = 30
 prefered_distance = 5
-prefered_sigma = 0.03
-prefered_radius = 0.03
+prefered_sigma = 0.005
+prefered_radius = 0.01
 
 transforms = transforms.Compose([transforms.ToTensor()])
 dataset = ImageFolder(root='dataset_images/', transform=transforms)
@@ -88,7 +88,7 @@ for epoch in range(epochs):
                 prefered_radius=prefered_radius,
             )
 
-            canvas = strokes.canvas()
+            canvas = strokes.canvas(for_model=False)
             image_loss = criterion(canvas, bw_images) * 100
             angle_loss = strokes._angle_loss(-1)
             loss = loss + image_loss
