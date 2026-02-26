@@ -24,9 +24,9 @@ batch_size = 1
 learning_rate = 5e-3
 epochs = 1
 lines_drawn = 30
-prefered_distance = 20
-prefered_sigma = 0.001
-prefered_radius = 0.001
+prefered_distance = 5
+prefered_sigma = 0.05
+prefered_radius = 0.05
 
 transforms = transforms.Compose([transforms.ToTensor()])
 dataset = ImageFolder(root='dataset_images/', transform=transforms)
@@ -74,7 +74,7 @@ for epoch in range(epochs):
             strokes_copy = strokes.strokes.detach()
 
             if strokes_copy.shape[1] == 0:
-                strokes_copy = torch.ones((1, 1, 7), device=device)
+                strokes_copy = torch.ones((1, 1, 5), device=device)
 
             combined_input = (combined_image, strokes_copy)
             output = model(combined_input)
@@ -82,17 +82,18 @@ for epoch in range(epochs):
             strokes.forget_grads()
             strokes.draw(output)
 
-            #TODO fix angle loss 
+            #TODO issues with lines being too close or on the boarder
             loss = strokes.loss(
                 prefered_distance=prefered_distance,
                 prefered_sigma=prefered_sigma,
                 prefered_radius=prefered_radius,
             )
 
-            avg_dist = strokes.get_distance(-1).sum()/batch_size
+            #avg_dist = strokes.get_distance(-1).sum()/batch_size
             canvas = strokes.canvas()
             image_loss = criterion(canvas, bw_images) * 100
             angle_loss = strokes._angle_loss(-1)
+            loss = loss + image_loss
 
             loss.backward()
             total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.1)
@@ -104,8 +105,6 @@ for epoch in range(epochs):
 
         
         if i % 20 == 0:
-            angle = strokes.get_line_angle(-1)
-            print(angle)
             strokes.render(other_image=bw_images)
 
             

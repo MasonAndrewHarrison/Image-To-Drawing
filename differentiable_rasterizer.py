@@ -3,7 +3,7 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 
 @torch.compile
-def render_lines_sdf(strokes: torch.Tensor, height: int, width: int) -> torch.Tensor:
+def render_lines_sdf(strokes: torch.Tensor, height: int, width: int, for_model: bool) -> torch.Tensor:
 
     device = strokes.device
 
@@ -16,6 +16,7 @@ def render_lines_sdf(strokes: torch.Tensor, height: int, width: int) -> torch.Te
     y1 = strokes[:-1, 1].view(-1, 1, 1)
     x2 = strokes[1:, 0].view(-1, 1, 1)
     y2 = strokes[1:, 1].view(-1, 1, 1)
+    
     sigma = strokes[1:, 2].view(-1, 1, 1)
     radius = strokes[1:, 3].view(-1, 1, 1)
     opacity = strokes[1:, 4].view(-1, 1, 1)
@@ -42,23 +43,38 @@ def render_lines_sdf(strokes: torch.Tensor, height: int, width: int) -> torch.Te
     # distance = √( (P_x - AT→_x)² + (P_y - AT→_y)² )
     distance = torch.sqrt((pixel_x - vector_at_x)**2 + (pixel_y - vector_at_y)**2 + 1e-8)
 
-    # Sign Distance Function
-    sdf = distance - radius
-    sdf = sdf.clamp(min=0)
+    if not for_model:
 
-    # g(sdf) = e^( -sdf² / 2σ²)
-    gaussian_sdf = torch.exp(-sdf**2 / (2 * sigma**2 + 1e-8)).clamp(min=1e-6)
-    gaussian_sdf = gaussian_sdf * opacity
+        # Sign Distance Function
+        sdf = distance - radius
+        sdf = sdf.clamp(min=0)
 
-    canvas = gaussian_sdf.sum(dim=0).clamp(0, 1)
+        # g(sdf) = e^( -sdf² / 2σ²)
+        gaussian_sdf = torch.exp(-sdf**2 / (2 * sigma**2 + 1e-8)).clamp(min=1e-6)
+        gaussian_sdf = gaussian_sdf * opacity
+        canvas = gaussian_sdf
+        #1 - canvas
+    
+    else:
+        # Sign Distance Function
+        sdf = distance - radius
+        sdf = sdf.clamp(min=0)
+
+        canvas = sdf
+
+    canvas = canvas.sum(dim=0).clamp(0, 1)
     canvas = canvas.unsqueeze(0)
 
-    return 1 - canvas
+    if not for_model:
+        canvas = 1 - canvas
 
-def render_lines_sdf_batched(strokes: torch.Tensor, height: int, width: int) -> torch.Tensor:
+
+    return canvas
+
+def render_lines_sdf_batched(strokes: torch.Tensor, height: int, width: int, for_model: bool) -> torch.Tensor:
 
     all_canvas = torch.func.vmap(
-        lambda stroke: render_lines_sdf(stroke, height, width)
+        lambda stroke: render_lines_sdf(stroke, height, width, for_model)
     )(strokes)
 
     return all_canvas

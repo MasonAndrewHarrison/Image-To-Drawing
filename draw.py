@@ -31,7 +31,7 @@ class Strokes():
         new_stroke = new_stroke.unsqueeze(1)
         self.strokes = torch.concat([self.strokes, new_stroke], dim=1)
 
-    def canvas(self):
+    def canvas(self, for_model: bool = True):
 
         strokes = self.get_strokes()
 
@@ -39,6 +39,7 @@ class Strokes():
             strokes=strokes[:, :, :], 
             height=self.height, 
             width=self.width, 
+            for_model=for_model,
         )
 
     def render(self, other_image=None):
@@ -58,6 +59,10 @@ class Strokes():
             canvas = canvas[-1, :, :].squeeze(0)
             other_image = other_image[-1, :, : ,:].squeeze(0)
 
+            canvas_drawing = self.canvas(for_model=False)
+            canvas_drawing = canvas_drawing[-1, :, :]
+            canvas_drawing = canvas_drawing.squeeze(0).detach().cpu()
+
             overlap_image = other_image + canvas
             overlap_image = 5*(overlap_image > .5) + overlap_image
             overlap_image = overlap_image.detach().cpu()
@@ -65,19 +70,23 @@ class Strokes():
             canvas = canvas.detach().cpu()
             other_image = other_image.detach().cpu()
 
-            fig, axes = plt.subplots(1, 3, figsize=(30, 10))
+            fig, axes = plt.subplots(1, 4, figsize=(30, 10))
 
-            axes[0].imshow(canvas, cmap='grey')
-            axes[0].set_title("AI Drawing")
+            axes[0].imshow(canvas, cmap='grey', vmin=0, vmax=1)
+            axes[0].set_title("By Distance AI Drawing")
             axes[0].axis('off')
 
-            axes[1].imshow(overlap_image)
-            axes[1].set_title("Overlap Image")
+            axes[1].imshow(canvas_drawing, cmap='grey', vmin=0, vmax=1)
+            axes[1].set_title("SDF Gaussian AI Drawing")
             axes[1].axis('off')
 
-            axes[2].imshow(other_image, cmap='grey')
-            axes[2].set_title("Image with Filter")
+            axes[2].imshow(overlap_image)
+            axes[2].set_title("Overlap Image")
             axes[2].axis('off')
+
+            axes[3].imshow(other_image, cmap='grey', vmin=0, vmax=1)
+            axes[3].set_title("Image with Filter")
+            axes[3].axis('off')
 
             
 
@@ -139,7 +148,6 @@ class Strokes():
     def _line_loss(self, prefered_ld, index):
 
         criterion = nn.MSELoss()
-        print(self.strokes.shape[1], index.__abs__())
 
         if self.strokes.shape[1] <= index.__abs__():
             
@@ -201,7 +209,7 @@ class Strokes():
         valid = (length_a > 1e-3) & (length_b > 1e-3)
 
         theda_cos = dot_product / (length_a * length_b)
-        theda_cos = torch.clamp(theda_cos, -1, 1)
+        theda_cos = torch.clamp(theda_cos, -1 + 1e-6, 1 - 1e-6)
 
         theda = torch.acos(theda_cos)
         theda = theda * valid.float()
@@ -232,7 +240,7 @@ class Strokes():
 
     def _angle_loss(self, index):
 
-        if self.strokes.shape[1] < index.__abs__()+1:
+        if self.strokes.shape[1] <= index.__abs__()+1:
             
             zero_loss = self.strokes.clone().sum() * 0
             return zero_loss
@@ -242,13 +250,9 @@ class Strokes():
         angle = self.get_angle(index)
         weight_angle = self._nested_smoothstep(angle, 1)
 
-        '''valid = (angle1 > 1e-7) & (angle2 > 1e-7)
-        if not valid.any():
-            return self.strokes.clone().sum() * 0'''
-
         angle_loss = criterion(
             weight_angle, 
-            torch.ones_like(weight_angle)
+            torch.ones_like(weight_angle)*0.95
         )
 
         return angle_loss
@@ -275,7 +279,7 @@ class Strokes():
             self._line_loss(prefered_distance_vec, -1),
             self._sigma_loss(prefered_sigma_vec, -1),
             self._radius_loss(prefered_radius_vec, -1),
-            self._angle_loss(-1)*5,
+            self._angle_loss(-1),
         ])
 
         return loss.sum()
@@ -297,8 +301,8 @@ if __name__ == "__main__":
     stroke = torch.zeros(64, 5).to("cuda")
     stroke[:, 0] = 50
     stroke[:, 1] = 50
-    stroke[:, 2] = 0.006
-    stroke[:, 3] = 0.006
+    stroke[:, 2] = 0.0006
+    stroke[:, 3] = 0.0006
     stroke[:, 4] = 1
     stroke.requires_grad_(True)
 
@@ -317,16 +321,36 @@ if __name__ == "__main__":
     stroke = torch.zeros(64, 5).to("cuda")
     stroke[:, 0] = 50
     stroke[:, 1] = 200
-    stroke[:, 2] = 0.016
-    stroke[:, 3] = 0.016
-    stroke[:, 4] = 0.5
+    stroke[:, 2] = 0.003
+    stroke[:, 3] = 0.003
+    stroke[:, 4] = 0.33
+    stroke.requires_grad_(True)
+
+    strokes.draw(stroke)
+
+    stroke = torch.zeros(64, 5).to("cuda")
+    stroke[:, 0] = 300
+    stroke[:, 1] = 300
+    stroke[:, 2] = 0.006
+    stroke[:, 3] = 0.006
+    stroke[:, 4] = 1
+    stroke.requires_grad_(True)
+
+    strokes.draw(stroke)
+
+    stroke = torch.zeros(64, 5).to("cuda")
+    stroke[:, 0] = 300
+    stroke[:, 1] = 0
+    stroke[:, 2] = 0.006
+    stroke[:, 3] = 0.006
+    stroke[:, 4] = 1
     stroke.requires_grad_(True)
 
     strokes.draw(stroke)
 
 
     dummy_strokes = torch.rand(10, 5).to('cuda')
-    render_lines_sdf(dummy_strokes, 300, 300)
+    render_lines_sdf(dummy_strokes, 300, 300, for_model=True)
     torch.cuda.synchronize()
 
     start = time.time()
@@ -351,6 +375,6 @@ if __name__ == "__main__":
 
     print("Visual Test: ")
 
-    strokes.render()
+    strokes.render(other_image=canvas)
 
     print("Exit")
