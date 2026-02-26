@@ -14,54 +14,24 @@ class Strokes():
         self.batch_size = batch_size
         self.device = device
 
-        self.strokes = torch.zeros(batch_size, 0, 7).to(device)
+        self.strokes = torch.zeros(batch_size, 0, 5).to(device)
 
     def get_strokes(self):
 
         new_stroke = self.strokes.clone()
 
-        scale = new_stroke.new_tensor([self.width, self.height, self.width, self.height, 1, 1, 1])
+        scale = new_stroke.new_tensor([self.width, self.height, 1, 1, 1])
         new_stroke = new_stroke / scale
 
         return new_stroke
 
 
-    def _draw_new_line(self, new_stroke):
+    def draw(self, new_stroke):
 
         new_stroke = new_stroke.unsqueeze(1)
         self.strokes = torch.concat([self.strokes, new_stroke], dim=1)
 
-    def draw(self, new_stroke, new_line: bool = False):
-
-        _,last_index,_ = self.strokes.shape
-
-        if new_line or last_index == 0: 
-
-            opacity_adjusted = torch.cat([
-                new_stroke[:, :6],
-                (new_stroke[:, 6] + 1).unsqueeze(1)
-            ], dim=1)
-
-            self._draw_new_line(opacity_adjusted)
-
-        else:
-
-            last_stroke = self.strokes[:, last_index-1, :].clone()
-
-            last_xy2 = last_stroke[:, 2:4]
-            current_xy1 = new_stroke[:, 0:2]
-            avg_sig_r = (last_stroke[:, 4:6] + new_stroke[:, 4:6]) / 2
-            opacity = new_stroke[:, 6].unsqueeze(1)
-
-            connecting_stroke = torch.cat([last_xy2, current_xy1, avg_sig_r, opacity], dim=1)
-
-            new_stroke = torch.cat([new_stroke[:, :6], new_stroke[:, 6].unsqueeze(1) + 2], dim=1)
-
-            self._draw_new_line(connecting_stroke)
-            self._draw_new_line(new_stroke)
-
-
-    def canvas(self):
+    def canvas(self, for_model: bool = True):
 
         strokes = self.get_strokes()
 
@@ -69,6 +39,7 @@ class Strokes():
             strokes=strokes[:, :, :], 
             height=self.height, 
             width=self.width, 
+            for_model=for_model,
         )
 
     def render(self, other_image=None):
@@ -88,6 +59,10 @@ class Strokes():
             canvas = canvas[-1, :, :].squeeze(0)
             other_image = other_image[-1, :, : ,:].squeeze(0)
 
+            canvas_drawing = self.canvas(for_model=False)
+            canvas_drawing = canvas_drawing[-1, :, :]
+            canvas_drawing = canvas_drawing.squeeze(0).detach().cpu()
+
             overlap_image = other_image + canvas
             overlap_image = 5*(overlap_image > .5) + overlap_image
             overlap_image = overlap_image.detach().cpu()
@@ -95,19 +70,23 @@ class Strokes():
             canvas = canvas.detach().cpu()
             other_image = other_image.detach().cpu()
 
-            fig, axes = plt.subplots(1, 3, figsize=(30, 10))
+            fig, axes = plt.subplots(1, 4, figsize=(30, 10))
 
             axes[0].imshow(canvas, cmap='grey')
-            axes[0].set_title("AI Drawing")
+            axes[0].set_title("By SDF AI Drawing")
             axes[0].axis('off')
 
-            axes[1].imshow(overlap_image)
-            axes[1].set_title("Overlap Image")
+            axes[1].imshow(canvas_drawing, cmap='grey', vmin=0, vmax=1)
+            axes[1].set_title("SDF and Gaussian AI Drawing")
             axes[1].axis('off')
 
-            axes[2].imshow(other_image, cmap='grey')
-            axes[2].set_title("Image with Filter")
+            axes[2].imshow(overlap_image)
+            axes[2].set_title("Overlap Image")
             axes[2].axis('off')
+
+            axes[3].imshow(other_image, cmap='grey')
+            axes[3].set_title("Image with Filter")
+            axes[3].axis('off')
 
             
 
@@ -152,8 +131,9 @@ class Strokes():
     def get_distance(self, index):
 
         stroke = self.strokes[:, index, :].clone()
-        x_dist = stroke[:,2] - stroke[:,0]
-        y_dist = stroke[:,3] - stroke[:,1]
+        prior_stroke = self.strokes[:, index-1, :].clone()
+        x_dist = prior_stroke[:, 0] - stroke[:,0]
+        y_dist = prior_stroke[:, 1] - stroke[:,1]
 
         distance = torch.sqrt(x_dist**2 + y_dist**2 + 1e-8) 
 
@@ -162,14 +142,14 @@ class Strokes():
 
     def get_alpha(self, index):
 
-        return self.strokes[:, index ,6].clip(0, 1)
+        return self.strokes[:, index ,4].clip(0, 1)
 
 
     def _line_loss(self, prefered_ld, index):
 
         criterion = nn.MSELoss()
 
-        if self.strokes.shape[1] < index.__abs__():
+        if self.strokes.shape[1] <= index.__abs__():
             
             zero_loss = self.strokes.clone().sum() * 0
             return zero_loss
@@ -186,7 +166,7 @@ class Strokes():
 
     def get_simga(self, index):
 
-        return self.strokes[:, index, 4]
+        return self.strokes[:, index, 2]
 
 
     def _sigma_loss(self, prefered_sigma, index):
@@ -199,7 +179,7 @@ class Strokes():
 
     def get_radius(self, index):
 
-        return self.strokes[:, index, 5]
+        return self.strokes[:, index, 3]
 
 
     def _radius_loss(self, prefered_radius, index):
@@ -210,7 +190,7 @@ class Strokes():
         return criterion(radius, prefered_radius)
 
 
-    def get_angle(self, origin_x, origin_y, xa, ya, xb, yb):
+    def _get_angle(self, origin_x, origin_y, xa, ya, xb, yb):
         """
         Finds the angle of the vector A and vector B and normalized
         with the origin point
@@ -228,9 +208,8 @@ class Strokes():
 
         valid = (length_a > 1e-3) & (length_b > 1e-3)
 
-
         theda_cos = dot_product / (length_a * length_b)
-        theda_cos = torch.clamp(theda_cos, -1, 1)
+        theda_cos = torch.clamp(theda_cos, -1 + 1e-6, 1 - 1e-6)
 
         theda = torch.acos(theda_cos)
         theda = theda * valid.float()
@@ -238,18 +217,16 @@ class Strokes():
         return theda / torch.pi
 
 
-    def get_line_angle(self, index):
+    def get_angle(self, index):
 
         xa = self.strokes[:, index-2, 0].clone()
         ya = self.strokes[:, index-2, 1].clone()
-        xb = self.strokes[:, index-2, 2].clone()
-        yb = self.strokes[:, index-2, 3].clone()
+        xb = self.strokes[:, index-1, 0].clone()
+        yb = self.strokes[:, index-1, 1].clone()
         xc = self.strokes[:, index, 0].clone()
         yc = self.strokes[:, index, 1].clone()
-        xd = self.strokes[:, index, 2].clone()
-        yd = self.strokes[:, index, 3].clone()
 
-        angle1 = self.get_angle(
+        angle = self._get_angle(
             xa=xa,
             ya=ya,
             origin_x=xb,
@@ -258,52 +235,27 @@ class Strokes():
             yb=yc,
         )
 
-        angle2 = self.get_angle(
-            xa=xb,
-            ya=yb,
-            origin_x=xc,
-            origin_y=yc,
-            xb=xd,
-            yb=yd,
-        )
-
-        return angle1, angle2
+        return angle
 
 
     def _angle_loss(self, index):
 
-        if self.strokes.shape[1] < index.__abs__()+1:
+        if self.strokes.shape[1] <= index.__abs__()+1:
             
             zero_loss = self.strokes.clone().sum() * 0
             return zero_loss
 
         criterion = nn.BCELoss()
 
-        angle1, angle2 = self.get_line_angle(index)
+        angle = self.get_angle(index)
+        weight_angle = self._nested_smoothstep(angle, 1)
 
-        weight_angle1 = self._nested_smoothstep(angle1, 1)
-        weight_angle2 = self._nested_smoothstep(angle2, 1)
-
-        valid = (angle1 > 1e-7) & (angle2 > 1e-7)
-        if not valid.any():
-            return self.strokes.clone().sum() * 0
-
-        angle_loss1 = criterion(
-            weight_angle1, 
-            torch.ones_like(weight_angle1)
+        angle_loss = criterion(
+            weight_angle, 
+            torch.ones_like(weight_angle)*0.95
         )
 
-        angle_loss2 = criterion(
-            weight_angle2, 
-            torch.ones_like(weight_angle2)
-        )
-
-        avg_angle = (angle_loss1 + angle_loss2) / 2
-
-
-        test_loss = 2 - (angle1 + angle2)
-        #print(test_loss)
-        return test_loss
+        return angle_loss
 
 
     def loss(self,* , prefered_distance, prefered_sigma, prefered_radius):
@@ -324,19 +276,34 @@ class Strokes():
         ) * prefered_radius
 
         loss = torch.stack([
-            #self._line_loss(prefered_distance_vec, -2),
-            #self._line_loss(prefered_distance_vec, -1),
-            #self._sigma_loss(prefered_sigma_vec, -1),
-            #self._radius_loss(prefered_radius_vec, -1),
-            self._angle_loss(-1)*5,
+            self._line_loss(prefered_distance_vec, -1),
+            self._sigma_loss(prefered_sigma_vec, -1),
+            self._radius_loss(prefered_radius_vec, -1),
+            self._angle_loss(-1),
         ])
 
-        return loss.sum()/4
+        return loss.sum()
 
 
     def forget_grads(self):
 
         self.strokes = self.strokes.detach()
+
+    def debug_printout(self):
+
+        prefered_sigma = 0.05
+        prefered_radius = 0.05
+
+        print(f"Largest x: {self.strokes[-1, :, 0].max():.4f} < {self.width}\n"
+            f"Smallest x: {self.strokes[-1, :, 0].min():.4f} > {0}\n"
+            f"Largest y: {self.strokes[-1, :, 1].max():.4f} < {self.height}\n"
+            f"Smallest y: {self.strokes[-1, :, 1].min():.4f} > {0}\n"
+            f"Largest sigma: {self.strokes[-1, :, 2].max():.4f} ~= {prefered_sigma}\n"
+            f"Smallest sigma: {self.strokes[-1, :, 2].min():.4f} ~= {prefered_sigma}\n"
+            f"Largest radius: {self.strokes[-1, :, 3].max():.4f} ~= {prefered_radius}\n"
+            f"Smallest radius: {self.strokes[-1, :, 3].min():.4f} ~= {prefered_radius}\n"
+            f"Largest alpha: {self.strokes[-1, :, 4].max():.4f} ~= {1}\n"
+            f"Smallest alpha: {self.strokes[-1, :, 4].min():.4f} ~= {0}\n")
 
 
 
@@ -347,32 +314,59 @@ if __name__ == "__main__":
 
     strokes = Strokes(64, 300, 300, device="cuda")
 
-    stroke = torch.zeros(64, 7).to("cuda")
+    stroke = torch.zeros(64, 5).to("cuda")
     stroke[:, 0] = 50
     stroke[:, 1] = 50
-    stroke[:, 2] = 200
-    stroke[:, 3] = 200
-    stroke[:, 4] = 0.006
-    stroke[:, 5] = 0.006
-    stroke[:, 6] = -0.5
+    stroke[:, 2] = 0.0006
+    stroke[:, 3] = 0.0006
+    stroke[:, 4] = 1
     stroke.requires_grad_(True)
 
     strokes.draw(stroke)
 
-    stroke = torch.zeros(64, 7).to("cuda")
+    stroke = torch.zeros(64, 5).to("cuda")
     stroke[:, 0] = 200
-    stroke[:, 1] = 50
-    stroke[:, 2] = 50
-    stroke[:, 3] = 200
-    stroke[:, 4] = 0.016
-    stroke[:, 5] = 0.016
-    stroke[:, 6] = 0.5
+    stroke[:, 1] = 200
+    stroke[:, 2] = 0.016
+    stroke[:, 3] = 0.016
+    stroke[:, 4] = 1
     stroke.requires_grad_(True)
 
     strokes.draw(stroke)
 
-    dummy_strokes = torch.rand(10, 7).to('cuda')
-    render_lines_sdf(dummy_strokes, 300, 300)
+    stroke = torch.zeros(64, 5).to("cuda")
+    stroke[:, 0] = 50
+    stroke[:, 1] = 200
+    stroke[:, 2] = 0.003
+    stroke[:, 3] = 0.003
+    stroke[:, 4] = 0.33
+    stroke.requires_grad_(True)
+
+    strokes.draw(stroke)
+
+    stroke = torch.zeros(64, 5).to("cuda")
+    stroke[:, 0] = 240
+    stroke[:, 1] = 240
+    stroke[:, 2] = 0.006
+    stroke[:, 3] = 0.006
+    stroke[:, 4] = 1
+    stroke.requires_grad_(True)
+
+    strokes.draw(stroke)
+
+    stroke = torch.zeros(64, 5).to("cuda")
+    stroke[:, 0] = 290
+    stroke[:, 1] = 0
+    stroke[:, 2] = 0.006
+    stroke[:, 3] = 0.006
+    stroke[:, 4] = 1
+    stroke.requires_grad_(True)
+
+    strokes.draw(stroke)
+
+
+    dummy_strokes = torch.rand(10, 5).to('cuda')
+    render_lines_sdf(dummy_strokes, 300, 300, for_model=True)
     torch.cuda.synchronize()
 
     start = time.time()
@@ -389,8 +383,6 @@ if __name__ == "__main__":
         prefered_radius=prefered_radius,
     )
 
-    strokes._angle_loss(-1)
-
     end = time.time()
 
     print(f"Time to generate canvas: {(end - start):.4f} seconds.")
@@ -399,6 +391,6 @@ if __name__ == "__main__":
 
     print("Visual Test: ")
 
-    strokes.render()
+    strokes.render(other_image=canvas)
 
     print("Exit")

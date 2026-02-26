@@ -6,7 +6,7 @@ import filter
 
 class Model(nn.Module):
 
-    def __init__(self, in_channels: int = 3, out_features: int = 7, features: int = 16):
+    def __init__(self, in_channels: int = 3, out_features: int = 5, features: int = 16):
         super(Model, self).__init__()
 
         self.features = features
@@ -87,8 +87,26 @@ class Model(nn.Module):
         out = self.shared_mpls(combined_input)
         out = torch.sigmoid(out)
 
-        format_vector = out.new_tensor([width, height, width, height, 0.005, 0.005, 1])
+        distance_from_boarder = 0.25
+        format_vector = out.new_tensor([
+            width - width * distance_from_boarder,
+            height - height * distance_from_boarder, 
+            0.05, 
+            0.05, 
+            1
+        ])
+        
         out = out * format_vector
+
+        addition_boarder_vector = out.new_tensor([
+            (width * distance_from_boarder) / 2, 
+            (height * distance_from_boarder) / 2, 
+            0.0, 
+            0.0, 
+            0.0
+        ])
+
+        out = out + addition_boarder_vector
 
         return out
 
@@ -104,7 +122,7 @@ def initialize_weights(model):
 if __name__ == "__main__":
 
     random = torch.randn(1, 3, 64, 64)
-    random_strokes = torch.randn(1, 10, 7)
+    random_strokes = torch.randn(1, 10, 5)
     print(random.shape)
     model = Model()
     input_values = (random, random_strokes)
