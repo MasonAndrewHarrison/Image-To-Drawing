@@ -87,8 +87,26 @@ class Model(nn.Module):
         out = self.shared_mpls(combined_input)
         out = torch.sigmoid(out)
 
-        format_vector = out.new_tensor([width, height, 0.005, 0.005, 1])
+        distance_from_boarder = 0.25
+        format_vector = out.new_tensor([
+            width - width * distance_from_boarder,
+            height - height * distance_from_boarder, 
+            0.05, 
+            0.05, 
+            1
+        ])
+        
         out = out * format_vector
+
+        addition_boarder_vector = out.new_tensor([
+            (width * distance_from_boarder) / 2, 
+            (height * distance_from_boarder) / 2, 
+            0.0, 
+            0.0, 
+            0.0
+        ])
+
+        out = out + addition_boarder_vector
 
         return out
 

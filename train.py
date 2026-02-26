@@ -25,8 +25,8 @@ learning_rate = 5e-3
 epochs = 1
 lines_drawn = 30
 prefered_distance = 5
-prefered_sigma = 0.05
-prefered_radius = 0.05
+prefered_sigma = 0.03
+prefered_radius = 0.03
 
 transforms = transforms.Compose([transforms.ToTensor()])
 dataset = ImageFolder(root='dataset_images/', transform=transforms)
@@ -82,14 +82,12 @@ for epoch in range(epochs):
             strokes.forget_grads()
             strokes.draw(output)
 
-            #TODO issues with lines being too close or on the boarder
             loss = strokes.loss(
                 prefered_distance=prefered_distance,
                 prefered_sigma=prefered_sigma,
                 prefered_radius=prefered_radius,
             )
 
-            #avg_dist = strokes.get_distance(-1).sum()/batch_size
             canvas = strokes.canvas()
             image_loss = criterion(canvas, bw_images) * 100
             angle_loss = strokes._angle_loss(-1)
@@ -105,6 +103,8 @@ for epoch in range(epochs):
 
         
         if i % 20 == 0:
+            #TODO first image sometimes is just white
+            strokes.debug_printout()
             strokes.render(other_image=bw_images)
 
             
