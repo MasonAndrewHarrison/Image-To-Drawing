@@ -181,6 +181,18 @@ class Strokes():
 
         return self.strokes[:, index, 3]
 
+    def get_alpha_avg(self):
+
+        batch_size, line_count,_ = self.strokes.shape
+
+        return self.strokes[:, :, 4].sum() / (batch_size * line_count)
+
+    def _alpha_loss(self):
+
+        criterion = nn.BCELoss()
+
+        return criterion(self.get_alpha_avg(), torch.ones_like(self.get_alpha_avg()))
+
 
     def _radius_loss(self, prefered_radius, index):
 
@@ -280,6 +292,7 @@ class Strokes():
             self._sigma_loss(prefered_sigma_vec, -1),
             self._radius_loss(prefered_radius_vec, -1),
             self._angle_loss(-1),
+            self._alpha_loss(),
         ])
 
         return loss.sum()
