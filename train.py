@@ -48,7 +48,7 @@ scaler = GradScaler(device.__str__())
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
 criterion = nn.MSELoss()
 
-for epoch in range(epochs):
+for epoch in range(epochs): 
     model.train()
 
     for i, (images,_) in enumerate(loader):
@@ -91,7 +91,7 @@ for epoch in range(epochs):
             canvas = strokes.canvas(for_model=False)
             image_loss = criterion(canvas, bw_images) * 100
             angle_loss = strokes._angle_loss(-1)
-            loss = loss + image_loss
+            loss = loss #+ image_loss
 
             loss.backward()
             total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.1)
@@ -103,6 +103,7 @@ for epoch in range(epochs):
 
         
         if i % 20 == 0:
+            #TODO max alpha is too low
             #TODO first image sometimes is just white
             strokes.debug_printout()
             strokes.render(other_image=bw_images)
