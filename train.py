@@ -48,6 +48,10 @@ scaler = GradScaler(device.__str__())
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
 criterion = nn.MSELoss()
 
+#TODO change MSE to SSIM or DeltaE
+#TODO consider patchGAN
+#TODO rnn lstm
+
 for epoch in range(epochs): 
     model.train()
 
