@@ -1,6 +1,13 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import matplotlib.pyplot as plt
+from torchvision import datasets, transforms
+from torchvision.datasets import ImageFolder
+from torch.utils.data import DataLoader, Dataset
+import filter
+from scipy.ndimage import distance_transform_edt
+import numpy as np
 
 @torch.compile
 def render_lines_sdf(strokes: torch.Tensor, height: int, width: int, raw_sdf: bool) -> torch.Tensor:
@@ -69,6 +76,7 @@ def render_lines_sdf(strokes: torch.Tensor, height: int, width: int, raw_sdf: bo
         canvas = 1 - canvas
 
     return canvas
+    
 
 def render_point_sdf(strokes: torch.Tensor, height: int, width: int, raw_sdf: bool) -> torch.Tensor:
 
@@ -78,23 +86,15 @@ def render_point_sdf(strokes: torch.Tensor, height: int, width: int, raw_sdf: bo
     pixel_x = torch.linspace(0, 1, width, device=device).repeat(1, height, 1)
     pixel_y = torch.linspace(0, 1, height, device=device).repeat(1, width, 1).permute(0, 2, 1)
 
-    print(pixel_x.shape, pixel_y.shape)
-
-    print(strokes.shape, "shadsfefs")
-
     x = strokes[0, 0].view(1, 1, 1).expand(1, height, width)
     y = strokes[0, 1].view(1, 1, 1).expand(1, height, width)
-
-    print(y.shape)
     
     sigma = strokes[0, 2].view(1, 1, 1).expand(1, height, width)
     radius = strokes[0, 3].view(1, 1, 1).expand(1, height, width)
     opacity = strokes[0, 4].view(1, 1, 1).expand(1, height, width)
 
-
     # distance = √( (P_x - x)² + (P_y - y)² )
     distance = torch.sqrt((pixel_x - x)**2 + (pixel_y - y)**2 + 1e-8)
-    print(distance.shape)
     
     if raw_sdf:
         sdf = distance - radius
@@ -115,6 +115,7 @@ def render_point_sdf(strokes: torch.Tensor, height: int, width: int, raw_sdf: bo
 
     return canvas
 
+
 def render_sdf_batched(strokes: torch.Tensor, height: int, width: int, raw_sdf: bool) -> torch.Tensor:
 
     line_count = strokes.shape[1]
@@ -132,3 +133,37 @@ def render_sdf_batched(strokes: torch.Tensor, height: int, width: int, raw_sdf: 
         )(strokes)
 
     return all_canvas
+
+
+def image_to_sdf(image: torch.Tensor) -> torch.Tensor:
+
+    img_np = (image > 0.5).cpu().numpy()
+    
+    dist_outside = distance_transform_edt(~img_np)
+    dist_inside  = distance_transform_edt(img_np)
+    
+    sdf = dist_outside - dist_inside 
+    return torch.from_numpy(sdf).float().to(image.device)
+
+
+if __name__ == "__main__":
+
+    device = "cuda"
+
+    transforms = transforms.Compose([transforms.ToTensor()])
+    dataset = ImageFolder(root='dataset_images/', transform=transforms)
+
+    loader = DataLoader(
+        dataset, 
+        batch_size=1,
+    )
+
+    image,_ = next(iter(loader))
+    bw_image = image.mean(1).unsqueeze(1).clone().to(device)
+    bw_image = filter.ex_difference_of_gaussians(bw_image).float()
+    bw_image = bw_image.squeeze(0).squeeze(0).detach().cpu()
+
+    sdf = image_to_sdf(bw_image)
+
+    plt.imshow(sdf, cmap='grey')
+    plt.show()
