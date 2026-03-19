@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
-from differentiable_rasterizer import render_lines_sdf, render_lines_sdf_batched
+from differentiable_rasterizer import render_lines_sdf, render_sdf_batched
 import random
 import time
 
@@ -31,15 +31,15 @@ class Strokes():
         new_stroke = new_stroke.unsqueeze(1)
         self.strokes = torch.concat([self.strokes, new_stroke], dim=1)
 
-    def canvas(self, for_model: bool = True):
+    def canvas(self, raw_sdf: bool = False):
 
         strokes = self.get_strokes()
 
-        return render_lines_sdf_batched(
+        return render_sdf_batched(
             strokes=strokes[:, :, :], 
             height=self.height, 
             width=self.width, 
-            for_model=for_model,
+            raw_sdf=raw_sdf,
         )
 
     def render(self, other_image=None):
@@ -55,38 +55,32 @@ class Strokes():
 
         else:
 
-            canvas = self.canvas()
+            canvas = self.canvas(raw_sdf=True)
             canvas = canvas[-1, :, :].squeeze(0)
             other_image = other_image[-1, :, : ,:].squeeze(0)
 
-            canvas_drawing = self.canvas(for_model=False)
+            canvas_drawing = self.canvas()
             canvas_drawing = canvas_drawing[-1, :, :]
             canvas_drawing = canvas_drawing.squeeze(0).detach().cpu()
-
-            overlap_image = other_image + canvas
-            overlap_image = 5*(overlap_image > .5) + overlap_image
-            overlap_image = overlap_image.detach().cpu()
 
             canvas = canvas.detach().cpu()
             other_image = other_image.detach().cpu()
 
-            fig, axes = plt.subplots(1, 4, figsize=(30, 10))
+            fig, axes = plt.subplots(1, 3, figsize=(30, 10))
+
+            print(canvas.shape, canvas_drawing.shape)
 
             axes[0].imshow(canvas, cmap='grey')
-            axes[0].set_title("By SDF AI Drawing")
+            axes[0].set_title("AI Raw SDF")
             axes[0].axis('off')
 
             axes[1].imshow(canvas_drawing, cmap='grey', vmin=0, vmax=1)
-            axes[1].set_title("SDF and Gaussian AI Drawing")
+            axes[1].set_title("AI Drawing")
             axes[1].axis('off')
 
-            axes[2].imshow(overlap_image)
-            axes[2].set_title("Overlap Image")
+            axes[2].imshow(other_image, cmap='grey')
+            axes[2].set_title("Image with Filter")
             axes[2].axis('off')
-
-            axes[3].imshow(other_image, cmap='grey')
-            axes[3].set_title("Image with Filter")
-            axes[3].axis('off')
 
             
 
@@ -317,6 +311,10 @@ class Strokes():
             f"Smallest radius: {self.strokes[-1, :, 3].min():.4f} ~= {prefered_radius}\n"
             f"Largest alpha: {self.strokes[-1, :, 4].max():.4f} ~= {1}\n"
             f"Smallest alpha: {self.strokes[-1, :, 4].min():.4f} ~= {0}\n")
+        
+    def shape(self):
+        
+        return self.strokes.shape
 
 
 
@@ -325,13 +323,13 @@ if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    strokes = Strokes(64, 300, 300, device="cuda")
+    strokes = Strokes(64, 300, 350, device="cuda")
 
     stroke = torch.zeros(64, 5).to("cuda")
     stroke[:, 0] = 50
     stroke[:, 1] = 50
     stroke[:, 2] = 0.0006
-    stroke[:, 3] = 0.0006
+    stroke[:, 3] = 0.01
     stroke[:, 4] = 1
     stroke.requires_grad_(True)
 
@@ -345,7 +343,7 @@ if __name__ == "__main__":
     stroke[:, 4] = 1
     stroke.requires_grad_(True)
 
-    strokes.draw(stroke)
+    #strokes.draw(stroke)
 
     stroke = torch.zeros(64, 5).to("cuda")
     stroke[:, 0] = 50
@@ -355,7 +353,7 @@ if __name__ == "__main__":
     stroke[:, 4] = 0.33
     stroke.requires_grad_(True)
 
-    strokes.draw(stroke)
+    #strokes.draw(stroke)
 
     stroke = torch.zeros(64, 5).to("cuda")
     stroke[:, 0] = 240
@@ -365,7 +363,7 @@ if __name__ == "__main__":
     stroke[:, 4] = 1
     stroke.requires_grad_(True)
 
-    strokes.draw(stroke)
+    #strokes.draw(stroke)
 
     stroke = torch.zeros(64, 5).to("cuda")
     stroke[:, 0] = 290
@@ -375,11 +373,11 @@ if __name__ == "__main__":
     stroke[:, 4] = 1
     stroke.requires_grad_(True)
 
-    strokes.draw(stroke)
+    #strokes.draw(stroke)
 
 
     dummy_strokes = torch.rand(10, 5).to('cuda')
-    render_lines_sdf(dummy_strokes, 300, 300, for_model=True)
+    render_lines_sdf(dummy_strokes, 300, 300, raw_sdf=True)
     torch.cuda.synchronize()
 
     start = time.time()
