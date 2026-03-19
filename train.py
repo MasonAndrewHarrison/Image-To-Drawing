@@ -23,7 +23,7 @@ width  = 320
 batch_size = 1
 learning_rate = 5e-3
 epochs = 1
-lines_drawn = 30
+lines_drawn = 1
 prefered_distance = 5
 prefered_sigma = 0.005
 prefered_radius = 0.01
@@ -48,7 +48,7 @@ scaler = GradScaler(device.__str__())
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
 criterion = nn.MSELoss()
 
-#TODO change MSE to SSIM or DeltaE
+#TODO change MSE to SSIM
 #TODO consider patchGAN
 #TODO rnn lstm
 
@@ -86,22 +86,21 @@ for epoch in range(epochs):
             strokes.forget_grads()
             strokes.draw(output)
 
-            loss = strokes.loss(
+            '''loss = strokes.loss(
                 prefered_distance=prefered_distance,
                 prefered_sigma=prefered_sigma,
                 prefered_radius=prefered_radius,
-            )
+            )'''
 
-            canvas = strokes.canvas(for_model=False)
+            canvas = strokes.canvas(raw_sdf=False)
             image_loss = criterion(canvas, bw_images) * 100
-            angle_loss = strokes._angle_loss(-1)
-            loss = loss #+ image_loss
+            loss = image_loss
 
             loss.backward()
             total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.1)
 
             if j % 5 == 0:
-                print(f"loss: {loss.item():.4f} Image loss: {image_loss.item():.4f} Angle loss: {angle_loss.item():.4f} Grad norm: {total_norm:.4f}")
+                print(f"loss: {loss.item():.4f} Image loss: {image_loss.item():.4f} Grad norm: {total_norm:.4f}")
 
             optimizer.step()
 
