@@ -35,6 +35,7 @@ class Strokes():
 
         new_stroke = new_stroke.unsqueeze(1)
         self.strokes = torch.concat([self.strokes, new_stroke], dim=1)
+        
 
     def point_from_sdf(self, sdf, stroke_index):
 

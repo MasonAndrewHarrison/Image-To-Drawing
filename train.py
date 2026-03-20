@@ -12,6 +12,7 @@ import torch.optim as optim
 from torch.amp import autocast, GradScaler
 from torch.utils.data import DataLoader, Dataset
 from torch.amp import autocast, GradScaler
+from differentiable_rasterizer import image_to_sdf
 import os
 import random
 
@@ -63,6 +64,7 @@ for epoch in range(epochs):
         images = fixed_image.to(device)
         bw_images = images.mean(1).unsqueeze(1).clone().to(device)
         bw_images = filter.ex_difference_of_gaussians(bw_images).float()
+        sdf = image_to_sdf(bw_images)
 
         for j in range(lines_drawn):
 
@@ -94,6 +96,10 @@ for epoch in range(epochs):
 
             canvas = strokes.canvas(raw_sdf=False)
             image_loss = criterion(canvas, bw_images) * 100
+
+            #TODO gets point that is out of bounds fix this first tomorrow
+            point_distance = strokes.point_from_sdf(sdf, -1)
+            print(point_distance)
             loss = image_loss
 
             loss.backward()
