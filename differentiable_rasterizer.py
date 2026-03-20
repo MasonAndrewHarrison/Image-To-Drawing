@@ -135,35 +135,10 @@ def render_sdf_batched(strokes: torch.Tensor, height: int, width: int, raw_sdf: 
     return all_canvas
 
 
-def image_to_sdf(image: torch.Tensor) -> torch.Tensor:
+def image_to_sdf(image: torch.Tensor, threshold: float = 0.5) -> torch.Tensor:
 
-    img_np = (image > 0.5).cpu().numpy()
-    
-    dist_outside = distance_transform_edt(~img_np)
-    dist_inside  = distance_transform_edt(img_np)
-    
-    sdf = dist_outside - dist_inside 
+    img_np = (image > threshold).cpu().numpy()
+    sdf = distance_transform_edt(img_np) 
+
     return torch.from_numpy(sdf).float().to(image.device)
 
-
-if __name__ == "__main__":
-
-    device = "cuda"
-
-    transforms = transforms.Compose([transforms.ToTensor()])
-    dataset = ImageFolder(root='dataset_images/', transform=transforms)
-
-    loader = DataLoader(
-        dataset, 
-        batch_size=1,
-    )
-
-    image,_ = next(iter(loader))
-    bw_image = image.mean(1).unsqueeze(1).clone().to(device)
-    bw_image = filter.ex_difference_of_gaussians(bw_image).float()
-    bw_image = bw_image.squeeze(0).squeeze(0).detach().cpu()
-
-    sdf = image_to_sdf(bw_image)
-
-    plt.imshow(sdf, cmap='grey')
-    plt.show()

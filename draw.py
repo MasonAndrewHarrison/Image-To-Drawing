@@ -1,7 +1,12 @@
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
-from differentiable_rasterizer import render_lines_sdf, render_sdf_batched
+from differentiable_rasterizer import render_lines_sdf, render_sdf_batched, image_to_sdf
+from utils import point_from_pixel
+from torchvision import datasets, transforms
+from torchvision.datasets import ImageFolder
+from torch.utils.data import DataLoader, Dataset
+import filter
 import random
 import time
 
@@ -30,6 +35,18 @@ class Strokes():
 
         new_stroke = new_stroke.unsqueeze(1)
         self.strokes = torch.concat([self.strokes, new_stroke], dim=1)
+
+    def point_from_sdf(self, sdf, stroke_index):
+
+        point_stroke = self.strokes[:, stroke_index, 0:2]
+
+        x = point_stroke[:, 0]
+        y = point_stroke[:, 1]
+
+        distance = point_from_pixel(image_sdf=sdf, position=(x, y))
+
+        return distance
+
 
     def canvas(self, raw_sdf: bool = False):
 
@@ -395,6 +412,22 @@ if __name__ == "__main__":
     )
 
     end = time.time()
+
+    transforms = transforms.Compose([transforms.ToTensor()])
+    dataset = ImageFolder(root='dataset_images/', transform=transforms)
+
+    loader = DataLoader(
+        dataset, 
+        batch_size=1,
+    )
+
+    image,_ = next(iter(loader))
+    bw_image = image.mean(1).unsqueeze(1).clone().to(device)
+    bw_image = filter.ex_difference_of_gaussians(bw_image).float()
+    bw_image = bw_image.squeeze(0).squeeze(0).detach()
+
+    sdf = image_to_sdf(bw_image)
+    print(strokes.point_from_sdf(sdf, 0))
 
     print(f"Time to generate canvas: {(end - start):.4f} seconds.")
     print(f"Check does grads work with 'draw.py' pipe line: {canvas.requires_grad}, {loss.requires_grad}")
