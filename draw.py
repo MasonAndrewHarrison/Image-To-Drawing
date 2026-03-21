@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 from differentiable_rasterizer import render_lines_sdf, render_sdf_batched, image_to_sdf
-from utils import point_from_pixel
+from utils import points_from_pixel
 from torchvision import datasets, transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader, Dataset
@@ -39,14 +39,16 @@ class Strokes():
 
     def point_from_sdf(self, sdf, stroke_index):
 
-        point_stroke = self.strokes[:, stroke_index, 0:2]
-
-        x = point_stroke[:, 0]
-        y = point_stroke[:, 1]
-
-        distance = point_from_pixel(image_sdf=sdf, position=(x, y))
+        point = self.strokes[:, stroke_index, 0:2].unsqueeze(1)
+        distance = points_from_pixel(image_sdf=sdf, positions=point)
 
         return distance
+
+
+    def all_point_from_sdf(self, sdf):
+
+        positions = self.strokes[:, :, 0:2]
+        return points_from_pixel(sdf, positions)
 
 
     def canvas(self, raw_sdf: bool = False):
@@ -419,7 +421,7 @@ if __name__ == "__main__":
 
     loader = DataLoader(
         dataset, 
-        batch_size=1,
+        batch_size=64,
     )
 
     image,_ = next(iter(loader))
@@ -428,6 +430,7 @@ if __name__ == "__main__":
     bw_image = bw_image.squeeze(0).squeeze(0).detach()
 
     sdf = image_to_sdf(bw_image)
+    print(sdf.shape)
     print(strokes.point_from_sdf(sdf, 0))
 
     print(f"Time to generate canvas: {(end - start):.4f} seconds.")
