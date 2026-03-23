@@ -24,10 +24,10 @@ width  = 320
 batch_size = 1
 learning_rate = 5e-3
 epochs = 1
-lines_drawn = 1
+lines_drawn = 50
 prefered_distance = 5
-prefered_sigma = 0.005
-prefered_radius = 0.01
+prefered_sigma = 0.0005
+prefered_radius = 0.001
 
 transforms = transforms.Compose([transforms.ToTensor()])
 dataset = ImageFolder(root='dataset_images/', transform=transforms)
@@ -88,19 +88,18 @@ for epoch in range(epochs):
             strokes.forget_grads()
             strokes.draw(output)
 
-            '''loss = strokes.loss(
+            loss = strokes.loss(
                 prefered_distance=prefered_distance,
                 prefered_sigma=prefered_sigma,
                 prefered_radius=prefered_radius,
-            )'''
+            )
 
             canvas = strokes.canvas(raw_sdf=False)
             image_loss = criterion(canvas, bw_images) * 100
 
-            #TODO gets point that is out of bounds fix this first tomorrow
             point_distance = strokes.point_from_sdf(sdf, -1)
-            print(point_distance)
-            loss = image_loss
+
+            loss = image_loss + loss + point_distance
 
             loss.backward()
             total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.1)
