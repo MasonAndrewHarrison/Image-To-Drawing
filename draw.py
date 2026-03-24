@@ -19,6 +19,9 @@ class Strokes():
         self.batch_size = batch_size
         self.device = device
 
+        self.prefered_sigma = 2e-3
+        self.prefered_radius = 2e-3
+
         self.strokes = torch.zeros(batch_size, 0, 5).to(device)
 
     def get_strokes(self):
@@ -286,6 +289,9 @@ class Strokes():
 
     def loss(self,* , prefered_distance, prefered_sigma, prefered_radius):
 
+        self.prefered_radius = prefered_radius
+        self.prefered_sigma = prefered_sigma
+
         prefered_distance_vec = torch.ones(
             self.batch_size, 
             device=self.device
@@ -302,11 +308,10 @@ class Strokes():
         ) * prefered_radius
 
         loss = torch.stack([
-            self._line_loss(prefered_distance_vec, -1),
-            self._sigma_loss(prefered_sigma_vec, -1),
-            self._radius_loss(prefered_radius_vec, -1),
-            self._angle_loss(-1),
-            self._alpha_loss(),
+            self._line_loss(prefered_distance_vec, index=-1),
+            self._sigma_loss(prefered_sigma_vec, index=-1),
+            self._radius_loss(prefered_radius_vec, index=-1),
+            self._angle_loss(index=-1),
         ])
 
         return loss.sum()
@@ -318,19 +323,15 @@ class Strokes():
 
     def debug_printout(self):
 
-        prefered_sigma = 0.05
-        prefered_radius = 0.05
-
         print(f"Largest x: {self.strokes[-1, :, 0].max():.4f} < {self.width}\n"
             f"Smallest x: {self.strokes[-1, :, 0].min():.4f} > {0}\n"
             f"Largest y: {self.strokes[-1, :, 1].max():.4f} < {self.height}\n"
             f"Smallest y: {self.strokes[-1, :, 1].min():.4f} > {0}\n"
-            f"Largest sigma: {self.strokes[-1, :, 2].max():.4f} ~= {prefered_sigma}\n"
-            f"Smallest sigma: {self.strokes[-1, :, 2].min():.4f} ~= {prefered_sigma}\n"
-            f"Largest radius: {self.strokes[-1, :, 3].max():.4f} ~= {prefered_radius}\n"
-            f"Smallest radius: {self.strokes[-1, :, 3].min():.4f} ~= {prefered_radius}\n"
-            f"Largest alpha: {self.strokes[-1, :, 4].max():.4f} ~= {1}\n"
-            f"Smallest alpha: {self.strokes[-1, :, 4].min():.4f} ~= {0}\n")
+            f"Largest sigma: {self.strokes[-1, :, 2].max():.4f} ~= {self.prefered_sigma}\n"
+            f"Smallest sigma: {self.strokes[-1, :, 2].min():.4f} ~= {self.prefered_sigma}\n"
+            f"Largest radius: {self.strokes[-1, :, 3].max():.4f} ~= {self.prefered_radius}\n"
+            f"Smallest radius: {self.strokes[-1, :, 3].min():.4f} ~= {self.prefered_radius}\n"
+        )
         
     def shape(self):
         

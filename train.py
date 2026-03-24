@@ -25,9 +25,9 @@ batch_size = 1
 learning_rate = 5e-3
 epochs = 1
 lines_drawn = 50
-prefered_distance = 5
-prefered_sigma = 0.0005
-prefered_radius = 0.001
+prefered_distance = 10
+prefered_sigma = 5e-3
+prefered_radius = 5e-3
 
 transforms = transforms.Compose([transforms.ToTensor()])
 dataset = ImageFolder(root='dataset_images/', transform=transforms)
@@ -95,7 +95,7 @@ for epoch in range(epochs):
             )
 
             canvas = strokes.canvas(raw_sdf=False)
-            image_loss = criterion(canvas, bw_images) * 100
+            image_loss = criterion(canvas, bw_images)
 
             point_distance = strokes.point_from_sdf(sdf, -1)
 
@@ -110,7 +110,7 @@ for epoch in range(epochs):
             optimizer.step()
 
         
-        if i % 20 == 0:
+        if i % 5 == 0:
             #TODO max alpha is too low
             #TODO first image sometimes is just white
             strokes.debug_printout()
