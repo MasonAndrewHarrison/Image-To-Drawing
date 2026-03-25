@@ -1,25 +1,38 @@
+# Image to Drawing
 
-## Installation
-1. Clone this repository:\
-   `git clone https://github.com/MasonAndrewHarrison/Image-To-Drawing.git`
+> **Work in Progress** — This is a personal research project and is actively being developed.
 
-2. Change Directory:\
-   `cd Image-To-Drawing`
-      
-4. Create virtual environment:\
-   `python -m venv venv`
-   
-5. Activate it:\
-   (Linux)`source venv/bin/activate`\
-   (Windows CMD)`venv\Scripts\activate.bat`\
-   (Windows Power Shell)`venv\Scripts\Activate.ps1`
-   
-7. Install PyTorch:\
+A LSTM is used to create vector line art of an image and can be saved as an .SVG file. 
+
+## Steps to Train Network
+
+1. Setup Repo and Venv
+
+2. Install PyTorch:\
    (For CUDA)`pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu128`\
    (For CPU)`pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cpu`
 
-8. Install dependencies:\
+3. Install dependencies:\
    `pip install -r requirements.txt`
 
-9. Run:\
-  `python main.py`
+4. Setup Dataset and Weight Bins:\
+  `python create_dataset.py`\
+
+5. Train Network:\
+  `python train.py`
+
+## Convert an Image
+
+> **add later bash to colorize png image** \
+    `download weights from hugging face`
+    `python main --...`
+
+## Overview
+
+   This project take in an image it then uses a flow extented or an extented difference of gaussians filter on that image. After this step the LSTM recurrent neural network takes the filtered image and traces that image which is converted into a .SVG file which will be the line art of that iamge.
+
+## Architecture
+
+- LSTM Recurrent Neural Network
+
+Third party assets have their own licenses in the `third_party/` folder.
