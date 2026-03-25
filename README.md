@@ -29,10 +29,11 @@ A LSTM is used to create vector line art of an image and can be saved as an .SVG
 
 ## Overview
 
-   This project take in an image it then uses a flow extented or an extented difference of gaussians filter on that image. After this step the LSTM recurrent neural network takes the filtered image and traces that image which is converted into a .SVG file which will be the line art of that iamge.
+   This project take in an image it then uses a Flow Extented or an Extented Difference of Gaussians filter on that image. After this step the LSTM recurrent neural network takes the filtered image and traces that image which is converted into a .SVG file which will be the line art of that iamge.
 
 ## Architecture
 
+- Flow Extented Difference of Gaussians
 - LSTM Recurrent Neural Network
 
-Third party assets have their own licenses in the `third_party/` folder.
+
