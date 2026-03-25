@@ -22,13 +22,13 @@ class Strokes():
         self.prefered_sigma = 2e-3
         self.prefered_radius = 2e-3
 
-        self.strokes = torch.zeros(batch_size, 0, 5).to(device)
+        self.strokes = torch.zeros(batch_size, 0, 4).to(device)
 
     def get_strokes(self):
 
         new_stroke = self.strokes.clone()
 
-        scale = new_stroke.new_tensor([self.width, self.height, 1, 1, 1])
+        scale = new_stroke.new_tensor([self.width, self.height, 1, 1])
         new_stroke = new_stroke / scale
 
         return new_stroke
@@ -157,11 +157,6 @@ class Strokes():
         return distance      
 
 
-    def get_alpha(self, index):
-
-        return self.strokes[:, index ,4].clip(0, 1)
-
-
     def _line_loss(self, prefered_ld, index):
 
         criterion = nn.MSELoss()
@@ -173,10 +168,7 @@ class Strokes():
 
         distance = self.get_distance(index)
 
-        alpha = self.get_alpha(index)
-        weight_dist = self._smoothstep(prefered_ld, distance, alpha)
-
-        loss = criterion(weight_dist, prefered_ld)
+        loss = criterion(distance, prefered_ld)
 
         return loss
 
@@ -197,19 +189,6 @@ class Strokes():
     def get_radius(self, index):
 
         return self.strokes[:, index, 3]
-
-    def get_alpha_avg(self):
-
-        batch_size, line_count,_ = self.strokes.shape
-
-        return self.strokes[:, :, 4].sum() / (batch_size * line_count)
-
-    def _alpha_loss(self):
-
-        criterion = nn.BCELoss()
-
-        return criterion(self.get_alpha_avg(), torch.ones_like(self.get_alpha_avg()))
-
 
     def _radius_loss(self, prefered_radius, index):
 

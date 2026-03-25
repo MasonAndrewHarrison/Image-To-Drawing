@@ -27,7 +27,6 @@ def render_lines_sdf(strokes: torch.Tensor, height: int, width: int, raw_sdf: bo
     
     sigma = strokes[1:, 2].view(-1, 1, 1)
     radius = strokes[1:, 3].view(-1, 1, 1)
-    opacity = strokes[1:, 4].view(-1, 1, 1)
 
     # AB→ = B - A
     vector_ab_x = x2 - x1
@@ -91,7 +90,6 @@ def render_point_sdf(strokes: torch.Tensor, height: int, width: int, raw_sdf: bo
     
     sigma = strokes[0, 2].view(1, 1, 1).expand(1, height, width)
     radius = strokes[0, 3].view(1, 1, 1).expand(1, height, width)
-    opacity = strokes[0, 4].view(1, 1, 1).expand(1, height, width)
 
     # distance = √( (P_x - x)² + (P_y - y)² )
     distance = torch.sqrt((pixel_x - x)**2 + (pixel_y - y)**2 + 1e-8)
@@ -108,7 +106,6 @@ def render_point_sdf(strokes: torch.Tensor, height: int, width: int, raw_sdf: bo
 
         # g(sdf) = e^( -sdf² / 2σ²)
         gaussian_sdf = torch.exp(-sdf**2 / (2 * sigma**2 + 1e-8)).clamp(min=1e-6)
-        gaussian_sdf = gaussian_sdf * opacity
         canvas = gaussian_sdf
 
         canvas = 1 - canvas

@@ -80,7 +80,7 @@ for epoch in range(epochs):
             strokes_copy = strokes.strokes.detach()
 
             if strokes_copy.shape[1] == 0:
-                strokes_copy = torch.ones((1, 1, 5), device=device)
+                strokes_copy = torch.ones((1, 1, 4), device=device)
 
             combined_input = (combined_image, strokes_copy)
             output = model(combined_input)

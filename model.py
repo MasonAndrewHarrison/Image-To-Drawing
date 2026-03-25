@@ -6,7 +6,7 @@ import filter
 
 class Model(nn.Module):
 
-    def __init__(self, in_channels: int = 3, out_features: int = 5, features: int = 16):
+    def __init__(self, in_channels: int = 3, out_features: int = 4, features: int = 16):
         super(Model, self).__init__()
 
         self.features = features
@@ -93,7 +93,6 @@ class Model(nn.Module):
             height - height * distance_from_boarder, 
             0.05, 
             0.05, 
-            1
         ])
         
         out = out * format_vector
@@ -103,7 +102,6 @@ class Model(nn.Module):
             (height * distance_from_boarder) / 2, 
             0.0, 
             0.0, 
-            0.0
         ])
 
         out = out + addition_boarder_vector
