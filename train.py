@@ -54,6 +54,7 @@ criterion = nn.MSELoss()
 #TODO change MSE to SSIM
 #TODO rnn lstm
 
+
 for epoch in range(epochs): 
     model.train()
 
