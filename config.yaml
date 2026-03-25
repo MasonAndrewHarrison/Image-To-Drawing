@@ -1,0 +1,14 @@
+training:
+
+  lines_drawn: 50
+
+model:
+  features: 32
+
+prefered_line:
+  distance: 10
+  sigma: 5e-3
+  radius: 5e-3
+
+paths:
+  dataset: "dataset_images/"

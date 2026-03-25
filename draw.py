@@ -2,15 +2,16 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 from differentiable_rasterizer import render_lines_sdf, render_sdf_batched, image_to_sdf
-from utils import points_from_pixel
+from utils import points_from_sdf, nested_smoothstep
 from torchvision import datasets, transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader, Dataset
 import filter
+import yaml
 import random
 import time
 
-class Strokes():
+class Stroke():
 
     def __init__(self, batch_size, height, width, device):
 
@@ -19,8 +20,13 @@ class Strokes():
         self.batch_size = batch_size
         self.device = device
 
-        self.prefered_sigma = 2e-3
-        self.prefered_radius = 2e-3
+        with open("config.yaml", "r") as f:
+            config = yaml.safe_load(f)
+        line_preference = config["prefered_line"]
+
+        self.prefered_distance = line_preference["distance"]
+        self.prefered_sigma = float(line_preference["sigma"])
+        self.prefered_radius = float(line_preference["radius"])
 
         self.strokes = torch.zeros(batch_size, 0, 4).to(device)
 
@@ -43,7 +49,7 @@ class Strokes():
     def point_from_sdf(self, sdf, stroke_index):
 
         point = self.strokes[:, stroke_index, 0:2].unsqueeze(1)
-        distance = points_from_pixel(image_sdf=sdf, positions=point)
+        distance = points_from_sdf(image_sdf=sdf, positions=point)
 
         return distance
 
@@ -51,7 +57,7 @@ class Strokes():
     def all_point_from_sdf(self, sdf):
 
         positions = self.strokes[:, :, 0:2]
-        return points_from_pixel(sdf, positions)
+        return points_from_sdf(sdf, positions)
 
 
     def canvas(self, raw_sdf: bool = False):
@@ -91,8 +97,6 @@ class Strokes():
 
             fig, axes = plt.subplots(1, 3, figsize=(30, 10))
 
-            print(canvas.shape, canvas_drawing.shape)
-
             axes[0].imshow(canvas, cmap='grey')
             axes[0].set_title("AI Raw SDF")
             axes[0].axis('off')
@@ -105,8 +109,6 @@ class Strokes():
             axes[2].set_title("Image with Filter")
             axes[2].axis('off')
 
-            
-
             plt.tight_layout()
             plt.show()
 
@@ -114,35 +116,6 @@ class Strokes():
     def __str__(self):
 
         return self.strokes.__str__()
-
-
-    @staticmethod
-    def _smoothstep(a, b, t):
-        """
-        Smooth interpolation from a to b
-        f: ℝ²×[0,1] → [a,b],  f(a,b,α) = (b-a)·α²(3-2α) + a
-        """
-
-        smooth_funct = (t**2)*(3-2*t)
-        ab_lerp = (b-a)*smooth_funct + a
-
-        return ab_lerp
-
-    @staticmethod
-    def _nested_smoothstep(t, iterations=1):  
-        """
-        Applies f(t) = t²(3-2t) recursively for n iterations
-        out = f∘f∘...∘f(t), t ∈ [0, 1]
-        """
-
-        t = torch.clamp(t, 0, 1)
-        smooth_funct = lambda t : (t**2)*(3-2*t)
-        out = t
-
-        for _ in range(iterations):
-            out = smooth_funct(out)
-
-        return out
 
 
     def get_distance(self, index):
@@ -256,7 +229,7 @@ class Strokes():
         criterion = nn.BCELoss()
 
         angle = self.get_angle(index)
-        weight_angle = self._nested_smoothstep(angle, 1)
+        weight_angle = nested_smoothstep(angle, 1)
 
         angle_loss = criterion(
             weight_angle, 
@@ -266,25 +239,22 @@ class Strokes():
         return angle_loss
 
 
-    def loss(self,* , prefered_distance, prefered_sigma, prefered_radius):
-
-        self.prefered_radius = prefered_radius
-        self.prefered_sigma = prefered_sigma
+    def loss(self):
 
         prefered_distance_vec = torch.ones(
             self.batch_size, 
             device=self.device
-        ) * prefered_distance
+        ) * self.prefered_distance
 
         prefered_sigma_vec = torch.ones(
             self.batch_size, 
             device=self.device
-        ) * prefered_sigma
+        ) * self.prefered_sigma
 
         prefered_radius_vec = torch.ones(
             self.batch_size, 
             device=self.device
-        ) * prefered_radius
+        ) * self.prefered_radius
 
         loss = torch.stack([
             self._line_loss(prefered_distance_vec, index=-1),
@@ -322,60 +292,55 @@ if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    strokes = Strokes(64, 300, 350, device="cuda")
+    strokes = Stroke(64, 300, 350, device="cuda")
 
-    stroke = torch.zeros(64, 5).to("cuda")
+    stroke = torch.zeros(64, 4).to("cuda")
     stroke[:, 0] = 50
     stroke[:, 1] = 50
     stroke[:, 2] = 0.0006
     stroke[:, 3] = 0.01
-    stroke[:, 4] = 1
     stroke.requires_grad_(True)
 
     strokes.draw(stroke)
 
-    stroke = torch.zeros(64, 5).to("cuda")
+    stroke = torch.zeros(64, 4).to("cuda")
     stroke[:, 0] = 200
     stroke[:, 1] = 200
     stroke[:, 2] = 0.016
     stroke[:, 3] = 0.016
-    stroke[:, 4] = 1
     stroke.requires_grad_(True)
 
-    #strokes.draw(stroke)
+    strokes.draw(stroke)
 
-    stroke = torch.zeros(64, 5).to("cuda")
+    stroke = torch.zeros(64, 4).to("cuda")
     stroke[:, 0] = 50
     stroke[:, 1] = 200
     stroke[:, 2] = 0.003
     stroke[:, 3] = 0.003
-    stroke[:, 4] = 0.33
     stroke.requires_grad_(True)
 
-    #strokes.draw(stroke)
+    strokes.draw(stroke)
 
-    stroke = torch.zeros(64, 5).to("cuda")
+    stroke = torch.zeros(64, 4).to("cuda")
     stroke[:, 0] = 240
     stroke[:, 1] = 240
     stroke[:, 2] = 0.006
     stroke[:, 3] = 0.006
-    stroke[:, 4] = 1
     stroke.requires_grad_(True)
 
-    #strokes.draw(stroke)
+    strokes.draw(stroke)
 
-    stroke = torch.zeros(64, 5).to("cuda")
+    stroke = torch.zeros(64, 4).to("cuda")
     stroke[:, 0] = 290
     stroke[:, 1] = 0
     stroke[:, 2] = 0.006
     stroke[:, 3] = 0.006
-    stroke[:, 4] = 1
     stroke.requires_grad_(True)
 
-    #strokes.draw(stroke)
+    strokes.draw(stroke)
 
 
-    dummy_strokes = torch.rand(10, 5).to('cuda')
+    dummy_strokes = torch.rand(10, 4).to('cuda')
     render_lines_sdf(dummy_strokes, 300, 300, raw_sdf=True)
     torch.cuda.synchronize()
 
@@ -394,23 +359,6 @@ if __name__ == "__main__":
     )
 
     end = time.time()
-
-    transforms = transforms.Compose([transforms.ToTensor()])
-    dataset = ImageFolder(root='dataset_images/', transform=transforms)
-
-    loader = DataLoader(
-        dataset, 
-        batch_size=64,
-    )
-
-    image,_ = next(iter(loader))
-    bw_image = image.mean(1).unsqueeze(1).clone().to(device)
-    bw_image = filter.ex_difference_of_gaussians(bw_image).float()
-    bw_image = bw_image.squeeze(0).squeeze(0).detach()
-
-    sdf = image_to_sdf(bw_image)
-    print(sdf.shape)
-    print(strokes.point_from_sdf(sdf, 0))
 
     print(f"Time to generate canvas: {(end - start):.4f} seconds.")
     print(f"Check does grads work with 'draw.py' pipe line: {canvas.requires_grad}, {loss.requires_grad}")

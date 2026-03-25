@@ -6,6 +6,7 @@ from torchvision import datasets, transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader, Dataset
 import filter
+import kornia.contrib
 from scipy.ndimage import distance_transform_edt
 import numpy as np
 
@@ -134,8 +135,8 @@ def render_sdf_batched(strokes: torch.Tensor, height: int, width: int, raw_sdf: 
 
 def image_to_sdf(image: torch.Tensor, threshold: float = 0.5) -> torch.Tensor:
 
-    img_np = (image > threshold).cpu().numpy()
-    sdf = distance_transform_edt(img_np) 
+    binary = (image > threshold).float()
+    sdf = kornia.contrib.distance_transform(binary)
 
-    return torch.from_numpy(sdf).float().to(image.device)
+    return sdf
 

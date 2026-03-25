@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from torchvision.datasets import ImageFolder
 from torchvision import datasets, transforms
 import filter
-from draw import Strokes
+from draw import Stroke
 from model import Model, initialize_weights
 import torch.optim as optim
 from torch.amp import autocast, GradScaler
@@ -15,19 +15,21 @@ from torch.amp import autocast, GradScaler
 from differentiable_rasterizer import image_to_sdf
 import os
 import random
+import yaml
 
 torch.autograd.set_detect_anomaly(True)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+with open("config.yaml", "r") as f:
+    config = yaml.safe_load(f)
 
 height = 240
 width  = 320
 batch_size = 1
 learning_rate = 5e-3
 epochs = 1
-lines_drawn = 50
-prefered_distance = 10
-prefered_sigma = 5e-3
-prefered_radius = 5e-3
+lines_drawn = config["training"]["lines_drawn"]
+
 
 transforms = transforms.Compose([transforms.ToTensor()])
 dataset = ImageFolder(root='dataset_images/', transform=transforms)
@@ -50,7 +52,6 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay
 criterion = nn.MSELoss()
 
 #TODO change MSE to SSIM
-#TODO consider patchGAN
 #TODO rnn lstm
 
 for epoch in range(epochs): 
@@ -58,7 +59,7 @@ for epoch in range(epochs):
 
     for i, (images,_) in enumerate(loader):
 
-        strokes = Strokes(batch_size, height, width, device=device)
+        strokes = Stroke(batch_size, height, width, device=device)
 
         images = images.to(device)
         images = fixed_image.to(device)
@@ -88,11 +89,7 @@ for epoch in range(epochs):
             strokes.forget_grads()
             strokes.draw(output)
 
-            loss = strokes.loss(
-                prefered_distance=prefered_distance,
-                prefered_sigma=prefered_sigma,
-                prefered_radius=prefered_radius,
-            )
+            loss = strokes.loss()
 
             canvas = strokes.canvas(raw_sdf=False)
             image_loss = criterion(canvas, bw_images)
@@ -111,8 +108,6 @@ for epoch in range(epochs):
 
         
         if i % 5 == 0:
-            #TODO max alpha is too low
-            #TODO first image sometimes is just white
             strokes.debug_printout()
             strokes.render(other_image=bw_images)
 
