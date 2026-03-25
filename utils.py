@@ -52,18 +52,6 @@ def point_from_image(xdog_image, positions):
 
     return sampled.squeeze(1).squeeze(-1)
 
-
-def smoothstep(a, b, t):
-    """
-    Smooth interpolation from a to b
-    f: ℝ²×[0,1] → [a,b],  f(a,b,α) = (b-a)·α²(3-2α) + a
-    """
-
-    smooth_funct = (t**2)*(3-2*t)
-    ab_lerp = (b-a)*smooth_funct + a
-
-    return ab_lerp
-
 def nested_smoothstep(t, iterations=1):  
     """
     Applies f(t) = t²(3-2t) recursively for n iterations
