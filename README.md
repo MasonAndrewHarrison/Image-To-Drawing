@@ -15,17 +15,17 @@ A LSTM is used to create vector line art of an image and can be saved as an .SVG
 3. Install dependencies:\
    `pip install -r requirements.txt`
 
-4. Setup Dataset and Weight Bins:\
-  `python create_dataset.py`\
-
-5. Train Network:\
-  `python train.py`
-
 ## Convert an Image
 
 > **add later bash to colorize png image** \
     `download weights from hugging face`
     `python main --...`
+
+## Train Network
+
+> **add yaml config file later** \
+  `python create_dataset.py`\
+  `python train.py`
 
 ## Overview
 
