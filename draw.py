@@ -127,7 +127,18 @@ class Stroke():
 
         distance = torch.sqrt(x_dist**2 + y_dist**2 + 1e-8) 
 
-        return distance      
+        return distance   
+
+    def avg_distance(self):
+
+        stroke = self.strokes[:, 1:, :].clone()
+        prior_stroke = self.strokes[:, :-1, :].clone()
+        x_dist = prior_stroke[:, :, 0] - stroke[:, :,0]
+        y_dist = prior_stroke[:, :, 1] - stroke[:, :,1]
+
+        distance = torch.sqrt(x_dist**2 + y_dist**2 + 1e-8) 
+
+        return distance.mean()    
 
 
     def _line_loss(self, prefered_ld, index):
@@ -140,7 +151,6 @@ class Stroke():
             return zero_loss
 
         distance = self.get_distance(index)
-
         loss = criterion(distance, prefered_ld)
 
         return loss
@@ -280,6 +290,7 @@ class Stroke():
             f"Smallest sigma: {self.strokes[-1, :, 2].min():.4f} ~= {self.prefered_sigma}\n"
             f"Largest radius: {self.strokes[-1, :, 3].max():.4f} ~= {self.prefered_radius}\n"
             f"Smallest radius: {self.strokes[-1, :, 3].min():.4f} ~= {self.prefered_radius}\n"
+            f"Average Distance: {self.avg_distance().item():.4f} ~= {self.prefered_distance}\n"
         )
         
     def shape(self):

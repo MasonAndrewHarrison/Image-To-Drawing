@@ -120,7 +120,7 @@ def initialize_weights(model):
 if __name__ == "__main__":
 
     random = torch.randn(1, 3, 64, 64)
-    random_strokes = torch.randn(1, 10, 5)
+    random_strokes = torch.randn(1, 10, 4)
     print(random.shape)
     model = Model()
     input_values = (random, random_strokes)

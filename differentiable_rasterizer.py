@@ -135,7 +135,7 @@ def render_sdf_batched(strokes: torch.Tensor, height: int, width: int, raw_sdf: 
 
 def image_to_sdf(image: torch.Tensor, threshold: float = 0.5) -> torch.Tensor:
 
-    binary = (image > threshold).float()
+    binary = (image < threshold).float()
     sdf = kornia.contrib.distance_transform(binary)
 
     return sdf

@@ -41,7 +41,7 @@ loader = DataLoader(
     pin_memory=True,
 )
 
-model = Model().to(device)
+model = Model(features=config["model"]["features"]).to(device)
 
 initialize_weights(model)
 
@@ -93,23 +93,22 @@ for epoch in range(epochs):
             loss = strokes.loss()
 
             canvas = strokes.canvas(raw_sdf=False)
-            image_loss = criterion(canvas, bw_images)
 
             point_distance = strokes.point_from_sdf(sdf, -1)
 
-            loss = image_loss + loss + point_distance
+            loss = loss + point_distance
 
             loss.backward()
             total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.1)
 
             if j % 5 == 0:
-                print(f"loss: {loss.item():.4f} Image loss: {image_loss.item():.4f} Grad norm: {total_norm:.4f}")
+                print(f"Line loss: {loss.item():.4f} SDF loss: {point_distance.item():.4f} Grad norm: {total_norm:.4f}")
 
             optimizer.step()
 
         
         if i % 5 == 0:
             strokes.debug_printout()
-            strokes.render(other_image=bw_images)
+            strokes.render(other_image=sdf)
 
             
