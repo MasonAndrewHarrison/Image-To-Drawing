@@ -6,7 +6,7 @@ import filter
 
 class Model(nn.Module):
 
-    def __init__(self, in_channels: int = 3, out_features: int = 4, features: int = 16):
+    def __init__(self, in_channels: int = 1, out_features: int = 4, features: int = 16):
         super(Model, self).__init__()
 
         self.features = features
@@ -64,9 +64,7 @@ class Model(nn.Module):
             nn.ReLU()
         )
 
-    def forward(self, x):
-
-        image, strokes = x
+    def forward(self, image, strokes):
 
         batch_size,_,height,width = image.shape
         image = self.conv_layer(image)
@@ -119,7 +117,7 @@ def initialize_weights(model):
 
 if __name__ == "__main__":
 
-    random = torch.randn(1, 3, 64, 64)
+    random = torch.randn(1, 1, 64, 64)
     random_strokes = torch.randn(1, 10, 4)
     print(random.shape)
     model = Model()

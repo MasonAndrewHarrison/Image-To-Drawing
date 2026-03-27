@@ -30,12 +30,17 @@ class Stroke():
 
         self.strokes = torch.zeros(batch_size, 0, 4).to(device)
 
-    def get_strokes(self):
+    def get_strokes(self, use_empty_buffer: bool = False, new_graph: bool = True):
 
         new_stroke = self.strokes.clone()
 
         scale = new_stroke.new_tensor([self.width, self.height, 1, 1])
         new_stroke = new_stroke / scale
+
+        if use_empty_buffer and new_stroke.shape[1] == 0:
+            new_stroke = torch.ones((1, 1, 4), device=self.device)
+
+        new_stroke = new_stroke.detach() if new_graph else new_stroke
 
         return new_stroke
 
@@ -276,7 +281,7 @@ class Stroke():
         return loss.sum()
 
 
-    def forget_grads(self):
+    def forget_graph(self):
 
         self.strokes = self.strokes.detach()
 

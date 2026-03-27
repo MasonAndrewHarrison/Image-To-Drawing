@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader, Dataset
 from torch.amp import autocast, GradScaler
 from differentiable_rasterizer import image_to_sdf
 import os
+from utils import *
 import random
 import yaml
 
@@ -54,7 +55,6 @@ criterion = nn.MSELoss()
 #TODO change MSE to SSIM
 #TODO rnn lstm
 
-
 for epoch in range(epochs): 
     model.train()
 
@@ -62,51 +62,27 @@ for epoch in range(epochs):
 
         strokes = Stroke(batch_size, height, width, device=device)
 
-        images = images.to(device)
+        #images = images.to(device)
         images = fixed_image.to(device)
         bw_images = images.mean(1).unsqueeze(1).clone().to(device)
-        bw_images = filter.ex_difference_of_gaussians(bw_images).float()
-        sdf = image_to_sdf(bw_images)
+        exdog_image = filter.ex_difference_of_gaussians(bw_images).float()
+        sdf = image_to_sdf(exdog_image)
 
         for j in range(lines_drawn):
 
-            model.zero_grad()
-            index_matrix = torch.ones_like(bw_images) * i
+            model.zero_grad(set_to_none=True)
+            strokes.forget_graph()
 
-            combined_image = torch.cat([
-                bw_images, 
-                strokes.canvas().detach(),
-                index_matrix,
-            ], dim=1)
-
-            strokes_copy = strokes.strokes.detach()
-
-            if strokes_copy.shape[1] == 0:
-                strokes_copy = torch.ones((1, 1, 4), device=device)
-
-            combined_input = (combined_image, strokes_copy)
-            output = model(combined_input)
-
-            strokes.forget_grads()
+            strokes_copy = strokes.get_strokes(use_empty_buffer=True, new_graph=True)
+            output = model(image=exdog_image, strokes=strokes_copy)
             strokes.draw(output)
 
-            loss = strokes.loss()
-
-            canvas = strokes.canvas(raw_sdf=False)
-
-            point_distance = strokes.point_from_sdf(sdf, -1)
-
-            loss = loss + point_distance
-
+            loss = total_loss(strokes, sdf)
             loss.backward()
-            total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.1)
-
-            if j % 5 == 0:
-                print(f"Line loss: {loss.item():.4f} SDF loss: {point_distance.item():.4f} Grad norm: {total_norm:.4f}")
-
+            debug_loss(strokes, sdf, model.parameters()) if j % 5 == 0 else None
+            
             optimizer.step()
 
-        
         if i % 5 == 0:
             strokes.debug_printout()
             strokes.render(other_image=sdf)

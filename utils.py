@@ -79,8 +79,23 @@ def nested_smoothstep(t, iterations=1):
     return out
 
 
-def total_loss(strokes):
-
+def total_loss(strokes, sdf):
     
+    line_loss = strokes.loss()
+    dist_loss = strokes.point_from_sdf(sdf, -1)
+    #TODO add SSIM loss
+    #ssim_loss = strokes.canvas(raw_sdf=False)
 
-    return 0 
+    return line_loss + dist_loss
+
+def debug_loss(strokes, sdf, model_parameters):
+    """
+    Get model.parameters() after .backward() and before .step() 
+    for total norm to work properly.
+    """
+        
+    loss = strokes.loss()
+    point_distance = strokes.point_from_sdf(sdf, -1)
+    total_norm = torch.nn.utils.clip_grad_norm_(model_parameters, max_norm=0.1)
+
+    print(f"Line loss: {loss.item():.4f} SDF loss: {point_distance.item():.4f} Grad norm: {total_norm:.4f}")
