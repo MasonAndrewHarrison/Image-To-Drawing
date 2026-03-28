@@ -10,25 +10,24 @@ from scipy.ndimage import distance_transform_edt
 import numpy as np
 
 
-def points_from_sdf(image_sdf, positions):
+def points_from_sdf(image_sdf, positions, interpolation_mode: str = 'bilinear'):
 
     B, _, H, W = image_sdf.shape
     N = positions.shape[1]
 
-    x = positions[:, :, 0]  
-    y = positions[:, :, 1] 
+    x, y = torch.unbind(positions, dim=2)
 
     x_norm = (x / (W - 1)) * 2 - 1  
     y_norm = (y / (H - 1)) * 2 - 1  
 
     grid = torch.stack([x_norm, y_norm], dim=-1) 
-    grid = grid.unsqueeze(2)                      
+    grid = grid.unsqueeze(2)                     
 
-    sampled = F.grid_sample(image_sdf, grid, mode='bilinear', align_corners=True)
+    sampled = F.grid_sample(image_sdf, grid, mode=interpolation_mode, align_corners=True)
 
     return sampled.squeeze(1).squeeze(-1)
 
-
+#TODO optimize this.
 def point_from_image(xdog_image, positions):
 
     img_np = (image > threshold).cpu().numpy()
@@ -52,6 +51,7 @@ def point_from_image(xdog_image, positions):
 
     return sampled.squeeze(1).squeeze(-1)
 
+
 def smoothstep(a, b, t):
     """
     Smooth interpolation from a to b
@@ -62,6 +62,7 @@ def smoothstep(a, b, t):
     ab_lerp = (b-a)*smooth_funct + a
 
     return ab_lerp
+
 
 def nested_smoothstep(t, iterations=1):  
     """
@@ -80,6 +81,19 @@ def nested_smoothstep(t, iterations=1):
 
 
 def total_loss(strokes, sdf):
+
+    #TODO gradient surgery. calculate the jacabian of all the losses to measure the confict between them. 
+    """
+    gradient surgery:
+
+    conflict = (J1 * J2).sum(dim=-1)
+    # where conflict is negative, reduce the weight of the weaker loss
+    # where conflict is positive, both losses agree — full speed ahead
+    weights = torch.where(conflict < 0, 0.1, 1.0)
+    loss = weights * loss1 + (1 - weights) * loss2
+
+    when doing gradient surgery project all grads onto a plane so they don't confict
+    """
     
     line_loss = strokes.loss()
     dist_loss = strokes.point_from_sdf(sdf, -1)
@@ -99,3 +113,5 @@ def debug_loss(strokes, sdf, model_parameters):
     total_norm = torch.nn.utils.clip_grad_norm_(model_parameters, max_norm=0.1)
 
     print(f"Line loss: {loss.item():.4f} SDF loss: {point_distance.item():.4f} Grad norm: {total_norm:.4f}")
+
+

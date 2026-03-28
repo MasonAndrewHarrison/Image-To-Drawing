@@ -53,6 +53,7 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay
 criterion = nn.MSELoss()
 
 #TODO change MSE to SSIM
+#TODO consider jacobian approximation
 #TODO rnn lstm
 
 for epoch in range(epochs): 
