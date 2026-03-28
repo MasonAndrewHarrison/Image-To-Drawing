@@ -25,16 +25,16 @@ grid_h = grid_shape[0]
 sdf = image_to_sdf(xdog).repeat(grid_h, 1, 1, 1)
 
 
-x_grid = torch.linspace(1, width-1, grid_w, device=device).repeat(grid_h, 1)
-y_grid = torch.linspace(1, height-1, grid_h, device=device).repeat(grid_w, 1).permute(1, 0)
+x_grid = torch.linspace(1, width-2, grid_w, device=device).repeat(grid_h, 1)
+y_grid = torch.linspace(1, height-2, grid_h, device=device).repeat(grid_w, 1).permute(1, 0)
 grid = torch.stack((x_grid, y_grid), dim=2)
 
 grid = grid.detach().requires_grad_(True)
 
 
-for _ in range(3):
+for _ in range(1):
 
-    output = points_from_sdf(sdf, grid, interpolation_mode="bilinear")
+    output = points_from_sdf(sdf, grid, interpolation_mode="bicubic")
     loss = output.unsqueeze(2).repeat(1, 1, 2)
 
     raw_grad = torch.autograd.grad(loss, grid, grad_outputs=torch.ones_like(grid))[0]
@@ -55,6 +55,6 @@ plt.scatter(grid[:, :, 0], grid[:, :, 1], c=output)
 plt.gca().invert_yaxis()
 
 sdf = sdf[0, 0, :, :].detach().cpu()
-#plt.imshow(sdf, cmap='gray')
+plt.imshow(sdf, cmap='gray')
 
 plt.show()
