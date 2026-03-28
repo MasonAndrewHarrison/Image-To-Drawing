@@ -11,6 +11,54 @@ import yaml
 import random
 import time
 
+class Canvas(Drawer):
+
+    def __init__(self, width, height, image):
+        super(Canvas, self).__init__(edge_image)
+
+    def render(self):
+
+        return 0
+
+class Drawer():
+
+    def __init__(self, edge_image, interpolation_mode: str = 'bicubic'):
+
+        self.edge_image = edge_image
+        self.device = edge_image.device
+        self.height = edge_image.shape[2]
+        self.width = edge_image.shape[3]
+        self.interpolation_mode = interpolation_mode
+
+    def __call__(self, current_strokes):
+
+        #TODO finish this fucntion
+
+        if first_stroke:
+            point = torch.ones((1, 1, 2), device=self.device)
+        else:
+            point = current_strokes[:, :, 0:2]
+
+        point[:, :, 0] *= (self.width/2)
+        point[:, :, 1] *= (self.height/2)
+        point = point.detach().requires_grad_(True)
+
+        sdf = image_to_sdf(image=self.edge_image)
+        point_dist = points_from_sdf(sdf, point, self.interpolation_mode)
+        point_dist = point_dist.unsqueeze(2).repeat(1, 1, 2)
+
+        raw_grad = torch.autograd.grad(point_dist.mean(), point)[0]
+        direction = raw_grad / (raw_grad.norm(dim=-1, keepdim=True) + 1e-8)
+        scaled_grad = direction * point_dist
+
+        with torch.no_grad():
+            point -= scaled_grad
+
+        self.update_edge_image(new_point=point.detach())
+
+        return point
+
+
 class Stroke():
 
     def __init__(self, batch_size, height, width, device):

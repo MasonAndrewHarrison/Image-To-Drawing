@@ -24,7 +24,7 @@ canny = filter.canny(image)
 grid_shape = (100, 100)
 grid_w = grid_shape[1]
 grid_h = grid_shape[0]
-sdf = image_to_sdf(canny, threshold=0.99).repeat(grid_h, 1, 1, 1)
+sdf = image_to_sdf(canny).repeat(grid_h, 1, 1, 1)
 
 #TODO fix error around the board. Needs to stay in [1, :-2] for x and [1, :-3] for y
 x_grid = torch.linspace(1, width-2, grid_w, device=device).repeat(grid_h, 1)
@@ -39,7 +39,7 @@ for _ in range(3):
     output = points_from_sdf(sdf, grid, interpolation_mode="bicubic")
     loss = output.unsqueeze(2).repeat(1, 1, 2)
 
-    raw_grad = torch.autograd.grad(loss, grid, grad_outputs=torch.ones_like(grid))[0]
+    raw_grad = torch.autograd.grad(loss.mean(), grid,)[0]
     direction = raw_grad / (raw_grad.norm(dim=-1, keepdim=True) + 1e-8)
     scaled_grad = direction * loss
 
