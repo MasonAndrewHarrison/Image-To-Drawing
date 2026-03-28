@@ -176,6 +176,8 @@ def sobel_edge_detection(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tenso
 
 def canny(image, device="cpu", threshold_1=0.005, threshold_2=0.06):
 
+    image = F.pad(image, (1, 1, 0, 0), mode='replicate')
+
     _, _, H, W = image.shape
 
     blurred = gaussian_blur(image, big_blur=True)
@@ -193,6 +195,7 @@ def canny(image, device="cpu", threshold_1=0.005, threshold_2=0.06):
     image = image.clamp_(min=0.00) * 100
 
     image = invert(image)
+    image = image[:, :, 1:-1, 1:-1]
 
     return image
 

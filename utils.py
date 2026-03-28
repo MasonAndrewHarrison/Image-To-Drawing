@@ -95,12 +95,12 @@ def total_loss(strokes, sdf):
     when doing gradient surgery project all grads onto a plane so they don't confict
     """
     
-    line_loss = strokes.loss()
+    #line_loss = strokes.loss()
     dist_loss = strokes.point_from_sdf(sdf, -1)
     #TODO add SSIM loss
     #ssim_loss = strokes.canvas(raw_sdf=False)
 
-    return line_loss + dist_loss
+    return dist_loss
 
 def debug_loss(strokes, sdf, model_parameters):
     """

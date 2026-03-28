@@ -28,7 +28,7 @@ for i in range(5):
     image = tensor.clone().detach()
 
     xdog1 = filter.ex_difference_of_gaussians(tensor)
-    xdog2 = filter.ex_difference_of_gaussians(tensor)
+    xdog2 = filter.canny(tensor)
 
     xdog_display1 = xdog1.squeeze(0).squeeze(0).detach().cpu()
     xdog_display2 = xdog2.squeeze(0).squeeze(0).detach().cpu()
