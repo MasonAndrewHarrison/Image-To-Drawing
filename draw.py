@@ -11,15 +11,6 @@ import yaml
 import random
 import time
 
-class Canvas(Drawer):
-
-    def __init__(self, width, height, image):
-        super(Canvas, self).__init__(edge_image)
-
-    def render(self):
-
-        return 0
-
 class Drawer():
 
     def __init__(self, edge_image, interpolation_mode: str = 'bicubic'):
@@ -29,19 +20,34 @@ class Drawer():
         self.height = edge_image.shape[2]
         self.width = edge_image.shape[3]
         self.interpolation_mode = interpolation_mode
+        self.batch_size = 64
+        self.stroke = Stroke(self.batch_size, self.height, self.width, self.device)
+        
+    def render(self):
 
-    def __call__(self, current_strokes):
+        self.stroke.debug_printout()
+        self.stroke.render()
 
-        #TODO finish this fucntion
+    def __call__(self):
 
-        if first_stroke:
-            point = torch.ones((1, 1, 2), device=self.device)
+        points_in_stroke = self.stroke.shape()[1]
+
+        if points_in_stroke < 1:
+            point_in_center = torch.ones((self.batch_size, 1, 4), device=self.device)
+            point_in_center[:, :, 0] = self.width / 2
+            point_in_center[:, :, 1] = self.height / 2
+            point_in_center[:, :, 2] = 0.005
+            point_in_center[:, :, 3] = 0.005
+            self.stroke.draw(point_in_center)
         else:
-            point = current_strokes[:, :, 0:2]
+            point = self.stroke.get_point(-1, new_graph=True)
+            point[:, :, 0] += 1
+            point[:, :, 1] += 1
+            self.stroke.draw(point)
 
-        point[:, :, 0] *= (self.width/2)
-        point[:, :, 1] *= (self.height/2)
-        point = point.detach().requires_grad_(True)
+        point = self.stroke.get_point(-1)[:, :, 0:2]
+        point = point.detach()
+        point = point.requires_grad_(True)
 
         sdf = image_to_sdf(image=self.edge_image)
         point_dist = points_from_sdf(sdf, point, self.interpolation_mode)
@@ -54,10 +60,25 @@ class Drawer():
         with torch.no_grad():
             point -= scaled_grad
 
-        self.update_edge_image(new_point=point.detach())
+        new_point = torch.ones((self.batch_size, 1, 4), device=self.device)
+        new_point[:, :, 0] = point[:, :, 0]
+        new_point[:, :, 1] = point[:, :, 1]
+        new_point[:, :, 2] = 0.005
+        new_point[:, :, 3] = 0.005
+        self.stroke.draw(new_point)
+
+        #self.update_edge_image(new_point=point.detach())
 
         return point
 
+class Canvas(Drawer):
+
+    def __init__(self, width, height, image):
+        super(Canvas, self).__init__(edge_image)
+
+    def render(self):
+
+        return 0
 
 class Stroke():
 
@@ -92,10 +113,16 @@ class Stroke():
 
         return new_stroke
 
+    def get_point(self, index, new_graph: bool = True):
+
+        point = self.strokes[:, index, :].unsqueeze(1).clone()
+        point = point.detach() if new_graph else point
+
+        return point
+
 
     def draw(self, new_stroke):
 
-        new_stroke = new_stroke.unsqueeze(1)
         self.strokes = torch.concat([self.strokes, new_stroke], dim=1)
         
 

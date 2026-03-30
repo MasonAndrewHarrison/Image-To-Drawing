@@ -18,13 +18,15 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 image,_ = dataset[0]
 _, height, width = image.shape
 image = image.mean(0).unsqueeze(0).unsqueeze(0).to(device)
-canny = filter.canny(image)
+canny = filter.canny(image).repeat(64, 1, 1, 1)
+print(canny.shape)
 
 drawer = Drawer(edge_image=canny)
-point = drawer(0)
+for i in range(25):
+    point = drawer()
+    print(point[-1, :, :])
 
-    
-print(point)
+drawer.render()
 
 point = point.detach().cpu()
 plt.scatter(point[:, :, 0], point[:, :, 1])
