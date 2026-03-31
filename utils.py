@@ -6,7 +6,7 @@ from torchvision import datasets, transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader, Dataset
 import filter
-from differentiable_rasterizer import image_to_sdf
+from differentiable_rasterizer import image_to_sdf, render_point_sdf
 from scipy.ndimage import distance_transform_edt
 import numpy as np
 
@@ -35,6 +35,31 @@ def points_from_sdf(image_sdf, positions, interpolation_mode: str = 'bilinear'):
 
     return sampled[0, 0, 0, :]
 
+def point_from_image(edge_image, position):
+
+    """
+    Image_sdf is expected to be in [H, W]. 
+    Positions is expected to be in [2]
+    Output will be a scaler
+    """
+
+    H, W = edge_image.shape
+    x, y = torch.unbind(position, dim=0)
+    x_norm = (x / (W - 1)) * 2 - 1  
+    y_norm = (y / (H - 1)) * 2 - 1 
+
+    point = torch.tensor(
+        [x_norm, y_norm, 0, 0],
+        device=edge_image.device
+    ).unsqueeze(0)
+    sdf_from_point = render_point_sdf(point, H, W, raw_sdf=True).squeeze(0)
+
+    print(sdf_from_point.shape)
+
+    plt.imshow(sdf_from_point.detach().cpu(), cmap='gray')
+    plt.show()
+
+    return 0
 
 def points_from_image(edge_image, positions, interpolation_mode: str = 'bilinear'):
 
@@ -91,3 +116,23 @@ def nested_smoothstep(t, iterations=1):
         out = smooth_funct(out)
 
     return out
+
+
+
+
+if __name__ == "__main__":
+
+
+    torch.autograd.set_detect_anomaly(True)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    transforms = transforms.Compose([transforms.ToTensor()])
+    dataset = ImageFolder(root='dataset_images/', transform=transforms)
+
+    image,_ = dataset[0]
+    _, height, width = image.shape
+    image = image.mean(0).unsqueeze(0).unsqueeze(0).to(device)
+    canny = filter.ex_difference_of_gaussians(image).squeeze(0).squeeze(0)
+    
+    
+    point = torch.tensor([50, 50], device=device)
+    dist = point_from_image(canny, point)
