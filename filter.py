@@ -77,7 +77,7 @@ def variable_gaussian_blur(image: torch.Tensor, size: int, sigma: float = 1) -> 
 
 @torch.jit.script
 def angle_rounder(theda: torch.Tensor) -> torch.Tensor:
-    factor = 4.0 / 3.14159265359  # (180/π) / 45
+    factor = 4.0 / torch.pi
     return torch.fmod(torch.round(theda * factor) * 45.0, 180.0).long()
 
 def non_maximum_suppression(magnitude, round_angle, threshold=0.005):

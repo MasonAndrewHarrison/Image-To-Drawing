@@ -1,9 +1,4 @@
-training:
 
-  lines_drawn: 50
-
-model:
-  features: 32
 
 prefered_line:
   distance: 10

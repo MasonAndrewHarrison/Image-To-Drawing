@@ -114,6 +114,21 @@ def render_point_sdf(strokes: torch.Tensor, height: int, width: int, raw_sdf: bo
     return canvas
 
 
+def render_sdf(stroke: torch.Tensor, height: int, width: int, raw_sdf: bool) -> torch.Tensor:
+
+    line_count = stroke.shape[0]
+
+    if line_count == 1:
+        return render_point_sdf(stroke, height, width, raw_sdf)
+
+    elif line_count > 1:
+        return render_lines_sdf(stroke, height, width, raw_sdf)
+
+    else:
+        raise Exception("Stroke size is less than 1.")
+
+
+
 def render_sdf_batched(strokes: torch.Tensor, height: int, width: int, raw_sdf: bool) -> torch.Tensor:
 
     line_count = strokes.shape[1]
@@ -137,7 +152,7 @@ def image_to_sdf(image: torch.Tensor, threshold: float = 0.5) -> torch.Tensor:
 
     binary_np = (image > threshold).float().squeeze().cpu().numpy()
     edt = distance_transform_edt(binary_np)
-    sdf = torch.from_numpy(edt).float().to(image.device).unsqueeze(1)
+    sdf = torch.from_numpy(edt).float().to(image.device).unsqueeze(0)
 
     return sdf
 

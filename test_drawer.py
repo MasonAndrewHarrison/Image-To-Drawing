@@ -18,24 +18,20 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 image,_ = dataset[0]
 _, height, width = image.shape
 image = image.mean(0).unsqueeze(0).unsqueeze(0).to(device)
-canny = filter.canny(image).repeat(64, 1, 1, 1)
+canny = filter.canny(image).squeeze(0).squeeze(0)
+sdf = image_to_sdf(canny).squeeze(0)
+
 print(canny.shape)
+print(sdf.shape)
 
 drawer = Drawer(edge_image=canny)
-for i in range(25):
-    point = drawer()
-    print(point[-1, :, :])
 
-drawer.render()
+stroke = torch.tensor([50 , 200, 0.005, 0.005], device="cuda").unsqueeze(0)
+drawer.draw(stroke)
 
-point = point.detach().cpu()
-plt.scatter(point[:, :, 0], point[:, :, 1])
-plt.colorbar()
-plt.gca().invert_yaxis()
+stroke = torch.tensor([200 , 50, 0.005, 0.005], device="cuda").unsqueeze(0)
+drawer.draw(stroke)
 
-
-xdog = filter.canny(image)
-sdf = xdog[0, 0, :, :].detach().cpu()
-plt.imshow(sdf, cmap='gray')
-
-plt.show()
+print(sdf.shape)
+distance = drawer.point_from_sdf(sdf, -1)
+print(distance)
