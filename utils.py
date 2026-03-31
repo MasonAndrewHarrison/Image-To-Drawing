@@ -6,38 +6,63 @@ from torchvision import datasets, transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader, Dataset
 import filter
+from differentiable_rasterizer import image_to_sdf
 from scipy.ndimage import distance_transform_edt
 import numpy as np
 
 
 def points_from_sdf(image_sdf, positions, interpolation_mode: str = 'bilinear'):
 
+    """
+    Image_sdf is expected to be in [H, W]. 
+    Positions is expected to be in [N, 2]
+    Output will be [N]
+    """
+
     H, W = image_sdf.shape
     N = positions.shape[1]
     x, y = torch.unbind(positions, dim=1)
 
-    x.unsqueeze_(0).unsqueeze_(0)
-    y.unsqueeze_(0).unsqueeze_(0)
-    image_sdf.unsqueeze_(0)
-    image_sdf.unsqueeze_(0)
-    print(image_sdf.shape)
-    image_sdf = image_sdf
+    x = x.unsqueeze(0).unsqueeze(0)
+    y = y.unsqueeze(0).unsqueeze(0)
+    image_sdf = image_sdf.unsqueeze(0).unsqueeze(0)
 
     x_norm = (x / (W - 1)) * 2 - 1  
     y_norm = (y / (H - 1)) * 2 - 1  
 
     grid = torch.stack([x_norm, y_norm], dim=-1) 
-    print(grid.shape, image_sdf.shape)
-
     sampled = F.grid_sample(image_sdf, grid, mode=interpolation_mode, align_corners=True)
 
-    return sampled.squeeze(1).squeeze(-1)
+    return sampled[0, 0, 0, :]
 
 
-def point_from_image(xdog_image, positions):
+def points_from_image(edge_image, positions, interpolation_mode: str = 'bilinear'):
 
-    #TODO rewrite this.
-    ...
+    """
+    Edge Image is expected to be in [H, W]. 
+    Positions is expected to be in [N, 2]
+    Output will be [N]
+    """
+
+    edge_image = edge_image.squeeze(0)
+    image_sdf = image_to_sdf(image=edge_image).squeeze(0)
+
+    H, W = image_sdf.shape
+    N = positions.shape[1]
+    x, y = torch.unbind(positions, dim=1)
+
+    x = x.unsqueeze(0).unsqueeze(0)
+    y = y.unsqueeze(0).unsqueeze(0)
+    image_sdf = image_sdf.unsqueeze(0).unsqueeze(0)
+    
+
+    x_norm = (x / (W - 1)) * 2 - 1  
+    y_norm = (y / (H - 1)) * 2 - 1  
+
+    grid = torch.stack([x_norm, y_norm], dim=-1) 
+    sampled = F.grid_sample(image_sdf, grid, mode=interpolation_mode, align_corners=True)
+
+    return sampled[0, 0, 0, :]
 
 
 def smoothstep(a, b, t):
