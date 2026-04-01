@@ -9,7 +9,8 @@ import filter
 from differentiable_rasterizer import image_to_sdf, render_point_sdf
 from scipy.ndimage import distance_transform_edt
 import numpy as np
-
+import time
+from typing_extensions import deprecated
 
 def points_from_sdf(image_sdf, positions, interpolation_mode: str = 'bilinear'):
 
@@ -35,31 +36,61 @@ def points_from_sdf(image_sdf, positions, interpolation_mode: str = 'bilinear'):
 
     return sampled[0, 0, 0, :]
 
-def point_from_image(edge_image, position):
+def exact_point_from_image(edge_image, position):
 
     """
     Image_sdf is expected to be in [H, W]. 
-    Positions is expected to be in [2]
-    Output will be a scaler
+    Positions is expected to be in [2] (x, y).
+    Output will be a scaler.
     """
 
     H, W = edge_image.shape
     x, y = torch.unbind(position, dim=0)
-    x_norm = (x / (W - 1)) * 2 - 1  
-    y_norm = (y / (H - 1)) * 2 - 1 
 
-    point = torch.tensor(
-        [x_norm, y_norm, 0, 0],
-        device=edge_image.device
-    ).unsqueeze(0)
-    sdf_from_point = render_point_sdf(point, H, W, raw_sdf=True).squeeze(0)
+    edge_coords = torch.nonzero(~edge_image, as_tuple=False).float() 
 
-    print(sdf_from_point.shape)
+    edge_y = edge_coords[:, 0]
+    edge_x = edge_coords[:, 1]
+    
+    distance = torch.sqrt((edge_x - x)**2 + (edge_y - y)**2 + 1e-8)
 
-    plt.imshow(sdf_from_point.detach().cpu(), cmap='gray')
-    plt.show()
+    return distance.min()
 
-    return 0
+
+@deprecated("Use exact_point_from_image instead")
+def point_from_image(edge_image, position, interpolation_mode: str = 'bilinear'):
+
+    """
+    Image_sdf is expected to be in [H, W]. 
+    Positions is expected to be in [2] (x, y).
+    Output will be a scaler.
+    """
+
+    edge_image = edge_image.squeeze(0)
+    sdf = image_to_sdf(image=edge_image).squeeze(0)
+
+    H, W = sdf.shape
+    x, y = torch.unbind(position.unsqueeze(0), dim=1)
+    sdf = sdf.squeeze() 
+
+    x0, y0 = x.floor().long(), y.floor().long()
+    x1, y1 = (x0 + 1).clamp(max=W-1), (y0 + 1).clamp(max=H-1)
+    x0, y0 = x0.clamp(min=0, max=W-1), y0.clamp(min=0, max=H-1)
+
+    wa = (x1 - x) * (y1 - y)
+    wb = (x1 - x) * (y - y0)
+    wc = (x - x0) * (y1 - y)
+    wd = (x - x0) * (y - y0)
+
+    x0, y0, x1, y1 = x0.squeeze(), y0.squeeze(), x1.squeeze(), y1.squeeze()
+    distance = \
+        wa.squeeze() * sdf[y0, x0] + \
+        wb.squeeze() * sdf[y1, x0] + \
+        wc.squeeze() * sdf[y0, x1] + \
+        wd.squeeze() * sdf[y1, x1]
+
+    return distance 
+
 
 def points_from_image(edge_image, positions, interpolation_mode: str = 'bilinear'):
 
@@ -73,8 +104,8 @@ def points_from_image(edge_image, positions, interpolation_mode: str = 'bilinear
     image_sdf = image_to_sdf(image=edge_image).squeeze(0)
 
     H, W = image_sdf.shape
-    N = positions.shape[1]
     x, y = torch.unbind(positions, dim=1)
+    print(x.shape)
 
     x = x.unsqueeze(0).unsqueeze(0)
     y = y.unsqueeze(0).unsqueeze(0)
@@ -134,5 +165,28 @@ if __name__ == "__main__":
     canny = filter.ex_difference_of_gaussians(image).squeeze(0).squeeze(0)
     
     
-    point = torch.tensor([50, 50], device=device)
-    dist = point_from_image(canny, point)
+    point = torch.tensor([100, 50], device=device)
+
+    _ = points_from_image(canny, point.unsqueeze(0))
+    _ = exact_point_from_image(canny, point)
+    torch.cuda.synchronize()
+
+
+    torch.cuda.synchronize()
+    start = time.time()
+    dist2 = exact_point_from_image(canny, point)
+    torch.cuda.synchronize()
+    end = time.time()
+
+    print(end-start, "point")
+    torch.cuda.synchronize()
+    start = time.time()
+    dist1 = points_from_image(canny, point.unsqueeze(0))
+    torch.cuda.synchronize()
+    end = time.time()
+
+    print(end-start, "points")
+
+    
+
+    print(dist1, dist2)
