@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 from differentiable_rasterizer import render_sdf, image_to_sdf
-from utils import points_from_sdf, nested_smoothstep, points_from_image
+from utils import points_from_sdf, nested_smoothstep, points_from_image, faster_point_from_image
 from torchvision import datasets, transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader, Dataset
@@ -40,8 +40,8 @@ class Drawer():
         if points_in_stroke < 1:
             new_point = torch.tensor(
                 [
-                    self.width / 2, 
-                    self.height / 2, 
+                    self.width / 2 + 50, 
+                    self.height / 2 + 100, 
                     self.prefered_sigma, 
                     self.prefered_radius,
                 ]
@@ -52,24 +52,42 @@ class Drawer():
             last_point = self.stroke[-1, :].unsqueeze(0)
             self.draw(last_point)
 
-        '''TODO after point from image is created change 
-        this here to use that so it does calc the grad for all points.
-        '''
         point_dist, point = self.all_points_from_image()
 
         raw_grad = torch.autograd.grad(point_dist.sum(), point)[0]
         direction = raw_grad / (raw_grad.norm(dim=-1, keepdim=True) + 1e-8)
-        scaled_grad = direction * point_dist
+        scaled_grad = direction * point_dist[-1]
 
         with torch.no_grad():
             point -= scaled_grad
 
         self.stroke[-1, 0:2] = point[-1, :]
-
-        #self.update_edge_image(new_point=point.detach())
+        self.update_edge_image(new_point=point[-1, :].detach())
         is_complete = False
 
         return is_complete
+
+    def update_edge_image(self, new_point):
+
+        H, W = self.edge_image.shape
+        x, y = torch.unbind(new_point, dim=0)
+
+        standard_devation = 3
+        brownian_motion = torch.randn(2, device=self.device) * standard_devation
+        x_epsilon = brownian_motion[0]
+        y_epsilon = brownian_motion[1]
+
+        x, y = x + x_epsilon, y + y_epsilon
+
+        pixel_y, pixel_x = torch.meshgrid(
+            torch.arange(H, device=self.device),
+            torch.arange(W, device=self.device),
+            indexing='ij'
+        )
+        sdf = torch.sqrt((pixel_x - x)**2 + (pixel_y - y)**2 + 1e-8)
+        mask = sdf > self.prefered_distance
+
+        self.edge_image = torch.where(mask, self.edge_image, 1)
 
     def get_stroke(self, use_empty_buffer: bool = False, new_graph: bool = True):
 
@@ -105,7 +123,7 @@ class Drawer():
 
     def point_from_sdf(self, sdf, stroke_index):
 
-        point = self.stroke[stroke_index, 0:2].unsqueeze(0)
+        point = self.stroke[stroke_index, 0:2].unsqueeze(0).clone()
         point = point.detach().requires_grad_(True)
         distance = points_from_sdf(image_sdf=sdf, positions=point)
 
@@ -114,25 +132,28 @@ class Drawer():
 
     def all_points_from_sdf(self, sdf):
 
-        point = self.stroke[:, 0:2]
+        point = self.stroke[:, 0:2].clone()
         point = point.detach().requires_grad_(True)
         distance = points_from_sdf(image_sdf=sdf, positions=point)
 
         return (distance, point)
 
     
-    def point_from_image(self, index, search_radius: int = -1):
-        """
-        Will only look for the nearest pixel within the
-        search radius. -1 mean it will look throught the whole image.
-        """
-        ...
-        #TODO create this.
+    def point_from_image(self, index: int = -1):
+
+        point = self.stroke[index, 0:2].clone()
+        point = point.detach().requires_grad_(True)
+        distance = faster_point_from_image(
+            edge_image=self.edge_image, 
+            position=point,
+        )
+
+        return (distance, point)
 
     
     def all_points_from_image(self):
 
-        point = self.stroke[:, 0:2]
+        point = self.stroke[:, 0:2].clone()
         point = point.detach().requires_grad_(True)
         distance = points_from_image(
             edge_image=self.edge_image, 
@@ -155,6 +176,8 @@ class Drawer():
         )
 
     def render(self, other_image=None):
+
+        other_image=self.edge_image
 
         if other_image is None:
 
@@ -316,7 +339,10 @@ if __name__ == "__main__":
 
     drawer = Drawer(edge_image=canny)
 
-    point = drawer.trace_edge()
+    drawer.trace_edge()
+    drawer.trace_edge()
+    drawer.trace_edge()
+    drawer.trace_edge()
     drawer.trace_edge()
 
 

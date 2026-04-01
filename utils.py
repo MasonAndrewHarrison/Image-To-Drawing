@@ -36,7 +36,43 @@ def points_from_sdf(image_sdf, positions, interpolation_mode: str = 'bilinear'):
 
     return sampled[0, 0, 0, :]
 
-def exact_point_from_image(edge_image, position):
+def partial_point_from_image(edge_image, position, radius):
+
+    """
+    Image_sdf is expected to be in [H, W]. 
+    Positions is expected to be in [2] (x, y).
+    Output will be a scaler. Output will be -1 if 
+    nothing is found or outside of radius.
+    This function is not differantable and incompatable
+    with pytorch autograd.
+    """
+
+    H, W = edge_image.shape
+    x, y = torch.unbind(position, dim=0)
+
+    x_start = torch.clip(x - radius, 0, W).__int__()
+    x_end = torch.clip(x + radius, 0, W).__int__()
+    y_start = torch.clip(y - radius, 0, H).__int__()
+    y_end = torch.clip(y + radius, 0, H).__int__()
+
+    edge_image = edge_image[y_start:y_end, x_start:x_end]
+    edge_coords = torch.nonzero(~edge_image, as_tuple=False).float() 
+
+    edge_y = edge_coords[:, 0] + y_start
+    edge_x = edge_coords[:, 1] + x_start
+    
+    distance = torch.sqrt((edge_x - x)**2 + (edge_y - y)**2 + 1e-8)
+
+    if distance.shape[0] == 0:
+        return -1
+    else:
+        smallest_dist = distance.min()
+        if smallest_dist > radius:
+            return -1
+        else:
+            return smallest_dist
+
+def faster_point_from_image(edge_image, position):
 
     """
     Image_sdf is expected to be in [H, W]. 
@@ -56,8 +92,7 @@ def exact_point_from_image(edge_image, position):
 
     return distance.min()
 
-
-@deprecated("Use exact_point_from_image instead")
+@deprecated("Use faster_point_from_image instead")
 def point_from_image(edge_image, position, interpolation_mode: str = 'bilinear'):
 
     """
@@ -105,7 +140,6 @@ def points_from_image(edge_image, positions, interpolation_mode: str = 'bilinear
 
     H, W = image_sdf.shape
     x, y = torch.unbind(positions, dim=1)
-    print(x.shape)
 
     x = x.unsqueeze(0).unsqueeze(0)
     y = y.unsqueeze(0).unsqueeze(0)
@@ -165,16 +199,18 @@ if __name__ == "__main__":
     canny = filter.ex_difference_of_gaussians(image).squeeze(0).squeeze(0)
     
     
-    point = torch.tensor([100, 50], device=device)
+    point = torch.tensor([75, 54], device=device)
 
     _ = points_from_image(canny, point.unsqueeze(0))
-    _ = exact_point_from_image(canny, point)
+    _ = partial_point_from_image(canny, point, radius=20)
     torch.cuda.synchronize()
 
+
+    point = torch.tensor([100, 50.25], device=device)
 
     torch.cuda.synchronize()
     start = time.time()
-    dist2 = exact_point_from_image(canny, point)
+    dist2 = partial_point_from_image(canny, point, radius=50)
     torch.cuda.synchronize()
     end = time.time()
 
