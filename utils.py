@@ -6,7 +6,7 @@ from torchvision import datasets, transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader, Dataset
 import filter
-from differentiable_rasterizer import image_to_sdf, render_point_sdf
+from differentiable_rasterizer import image_to_sdf, render_point_sdf, image_to_negative_sdf
 from scipy.ndimage import distance_transform_edt
 import numpy as np
 import time
@@ -66,7 +66,8 @@ def partial_point_from_image(edge_image, position, radius):
     if distance.shape[0] == 0:
         return -1
     else:
-        smallest_dist = distance.min()
+        smallest_dist, closest_idx = torch.min(distance, dim=0)
+
         if smallest_dist > radius:
             return -1
         else:
@@ -89,7 +90,7 @@ def faster_point_from_image(edge_image, position):
     edge_x = edge_coords[:, 1]
     
     distance = torch.sqrt((edge_x - x)**2 + (edge_y - y)**2 + 1e-8)
-
+    
     return distance.min()
 
 @deprecated("Use faster_point_from_image instead")
@@ -183,6 +184,32 @@ def nested_smoothstep(t, iterations=1):
     return out
 
 
+def lowest_point(negative_sdf, position, radius: int = -1):
+
+    """
+    Image_sdf is expected to be in [H, W]. 
+    Positions is expected to be in [2] (x, y).
+    Output will be a the position of the closest point.
+    """
+
+    H, W = negative_sdf.shape
+    x, y = torch.unbind(position, dim=0)
+
+    x_start = torch.clip(x - radius, 0, W).__int__()
+    x_end = torch.clip(x + radius, 0, W).__int__()
+    y_start = torch.clip(y - radius, 0, H).__int__()
+    y_end = torch.clip(y + radius, 0, H).__int__()
+
+    negative_sdf = negative_sdf[x_start:x_end, y_start:y_end]
+    plt.imshow(negative_sdf.detach().cpu(), cmap="grey")
+    plt.show()
+    """edge_coords = torch.nonzero(~edge_image, as_tuple=False).float() 
+
+    edge_y = edge_coords[:, 0] + y_start
+    edge_x = edge_coords[:, 1] + x_start"""
+
+    return position
+    
 
 
 if __name__ == "__main__":
@@ -196,33 +223,22 @@ if __name__ == "__main__":
     image,_ = dataset[0]
     _, height, width = image.shape
     image = image.mean(0).unsqueeze(0).unsqueeze(0).to(device)
-    canny = filter.ex_difference_of_gaussians(image).squeeze(0).squeeze(0)
+    canny = filter.ex_difference_of_gaussians(image)
     
+    canny = F.interpolate(
+        canny.float(),
+        size=[height*3, width*3],
+        mode="bicubic",
+        align_corners=False
+    ).squeeze(0).squeeze(0)
+
+
+    point = torch.tensor([200, 400], device=device)
+
+    negative_sdf = image_to_negative_sdf(canny.unsqueeze(0)).squeeze(0)
+    point = lowest_point(negative_sdf, point, radius=50)
     
-    point = torch.tensor([75, 54], device=device)
+    plt.imshow(negative_sdf.detach().cpu(), cmap="grey")
+    plt.scatter(point[1].cpu().numpy(), point[0].cpu().numpy())
+    plt.show()
 
-    _ = points_from_image(canny, point.unsqueeze(0))
-    _ = partial_point_from_image(canny, point, radius=20)
-    torch.cuda.synchronize()
-
-
-    point = torch.tensor([100, 50.25], device=device)
-
-    torch.cuda.synchronize()
-    start = time.time()
-    dist2 = partial_point_from_image(canny, point, radius=50)
-    torch.cuda.synchronize()
-    end = time.time()
-
-    print(end-start, "point")
-    torch.cuda.synchronize()
-    start = time.time()
-    dist1 = points_from_image(canny, point.unsqueeze(0))
-    torch.cuda.synchronize()
-    end = time.time()
-
-    print(end-start, "points")
-
-    
-
-    print(dist1, dist2)

@@ -1,9 +1,9 @@
 
 
 prefered_line:
-  distance: 30
-  sigma: 5e-3
-  radius: 5e-3
+  distance: 1
+  sigma: 3e-3
+  radius: 3e-3
 
 paths:
   dataset: "dataset_images/"

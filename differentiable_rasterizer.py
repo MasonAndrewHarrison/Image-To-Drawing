@@ -157,3 +157,11 @@ def image_to_sdf(image: torch.Tensor, threshold: float = 0.5) -> torch.Tensor:
 
     return sdf
 
+def image_to_negative_sdf(image: torch.Tensor, threshold: float = 0.5) -> torch.Tensor:
+
+    binary_np = (image < threshold).float().squeeze().cpu().numpy()
+    edt = -distance_transform_edt(binary_np)
+    sdf = torch.from_numpy(edt).float().to(image.device).unsqueeze(0)
+
+    return sdf
+

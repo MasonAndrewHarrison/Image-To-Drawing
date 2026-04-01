@@ -12,6 +12,8 @@ import random
 import time
 
 
+#TODO rewrite everything in taichi, c or c++
+
 
 class Drawer():
 
@@ -40,8 +42,8 @@ class Drawer():
         if points_in_stroke < 1:
             new_point = torch.tensor(
                 [
-                    self.width / 2 + 50, 
-                    self.height / 2 + 100, 
+                    self.width / 2, 
+                    self.height / 2, 
                     self.prefered_sigma, 
                     self.prefered_radius,
                 ]
@@ -56,7 +58,11 @@ class Drawer():
 
         raw_grad = torch.autograd.grad(point_dist.sum(), point)[0]
         direction = raw_grad / (raw_grad.norm(dim=-1, keepdim=True) + 1e-8)
-        scaled_grad = direction * point_dist[-1]
+
+        line_distance = self.prefered_distance
+        if points_in_stroke < 1:
+            line_distance = point_dist[-1]
+        scaled_grad = direction * line_distance
 
         with torch.no_grad():
             point -= scaled_grad
@@ -72,7 +78,7 @@ class Drawer():
         H, W = self.edge_image.shape
         x, y = torch.unbind(new_point, dim=0)
 
-        standard_devation = 3
+        standard_devation = 1e-6
         brownian_motion = torch.randn(2, device=self.device) * standard_devation
         x_epsilon = brownian_motion[0]
         y_epsilon = brownian_motion[1]
@@ -334,19 +340,18 @@ if __name__ == "__main__":
     image,_ = dataset[0]
     _, height, width = image.shape
     image = image.mean(0).unsqueeze(0).unsqueeze(0).to(device)
-    canny = filter.ex_difference_of_gaussians(image).squeeze(0).squeeze(0)
+    canny = filter.canny(image).squeeze(0).squeeze(0)
     sdf = image_to_sdf(canny).squeeze(0)
 
     drawer = Drawer(edge_image=canny)
-
-    drawer.trace_edge()
-    drawer.trace_edge()
-    drawer.trace_edge()
-    drawer.trace_edge()
-    drawer.trace_edge()
+    
+    for _ in range(300):
+        drawer.trace_edge()
+        
+    drawer.render(other_image=canny)
 
 
     #distance, point = drawer.all_points_from_sdf(sdf)
     
     
-    drawer.render(other_image=canny)
+    
