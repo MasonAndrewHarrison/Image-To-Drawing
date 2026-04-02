@@ -12,7 +12,7 @@ import numpy as np
 import time
 from typing_extensions import deprecated
 
-def points_from_sdf(image_sdf, positions, interpolation_mode: str = 'bilinear'):
+def points_from_sdf(image_sdf, positions, interpolatiowidthn_mode: str = 'bilinear'):
 
     """
     Image_sdf is expected to be in [H, W]. 
@@ -214,9 +214,11 @@ def search_lowest_point(negative_sdf, position, radius: int = -1):
         y_start = torch.clip(y - radius, 0, H).__int__()
         y_end = torch.clip(y + radius, 0, H).__int__()
 
-        negative_sdf = negative_sdf[x_start:x_end, y_start:y_end]
+        negative_sdf = negative_sdf[y_start:y_end, x_start:x_end]
         mask = create_circle_mask(radius, device=position.device)
         negative_sdf = torch.where(mask, negative_sdf, 0)
+        plt.imshow(negative_sdf.detach().cpu(), cmap="grey")
+        plt.show()
     
     flatten_sdf = negative_sdf.view(-1)
     lowest_value, lowest_idx = torch.min(flatten_sdf, dim=0)
@@ -255,23 +257,48 @@ if __name__ == "__main__":
     _, height, width = image.shape
     image = image.mean(0).unsqueeze(0).unsqueeze(0).to(device)
     canny = filter.ex_difference_of_gaussians(image)
+    scaler = 5
     
     canny = F.interpolate(
         canny.float(),
-        size=[height*3, width*3],
+        size=[height*scaler, width*scaler],
         mode="bicubic",
         align_corners=False
     ).squeeze(0).squeeze(0)
 
-
-    point = torch.tensor([30, 30], device=device)
+    point = torch.tensor([(height*scaler)/2, (width*scaler)/2], device=device)
+    og = point.clone()
 
     negative_sdf = image_to_negative_sdf(canny.unsqueeze(0)).squeeze(0)
-    vector = vec_to_lowest_point(negative_sdf, point, search_radius=20, magnatude=10)
+    vector = vec_to_lowest_point(negative_sdf, point, search_radius=40, magnatude=10)
     print(vector)
+
+
     point = point + vector
+
+    
+    H, W = negative_sdf.shape
+    x, y = torch.unbind(point, dim=0)
+    print(x, y)
+    radius = 10
+
+    x_start = torch.clip(x - radius, 0, W).__int__()
+    x_end = torch.clip(x + radius, 0, W).__int__()
+    y_start = torch.clip(y - radius, 0, H).__int__()
+    y_end = torch.clip(y + radius, 0, H).__int__()
+
+    mask = ~create_circle_mask(radius, device=device)
+
+    negative_sdf[y_start:y_end, x_start:x_end] = torch.where(mask, negative_sdf[y_start:y_end, x_start:x_end], 0)
+
+
+    vector = vec_to_lowest_point(negative_sdf, point, search_radius=25, magnatude=20)
+    print(vector)
+    point2 = point + vector
     
     plt.imshow(negative_sdf.detach().cpu(), cmap="grey")
     plt.scatter(point[1].cpu().numpy(), point[0].cpu().numpy())
+    plt.scatter(point2[1].cpu().numpy(), point2[0].cpu().numpy())
+    plt.scatter(og[1].cpu().numpy(), og[0].cpu().numpy())
     plt.show()
 

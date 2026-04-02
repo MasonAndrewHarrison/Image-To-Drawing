@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
+import torch.nn.functional as F
 from differentiable_rasterizer import render_sdf, image_to_sdf
 from utils import *
 from torchvision import datasets, transforms
@@ -18,12 +19,21 @@ import time
 class Drawer():
 
     def __init__(self, edge_image, interpolation_mode: str = 'bicubic'):
-
-        self.edge_image = edge_image
-        self.negative_sdf = image_to_negative_sdf(edge_image.unsqueeze(0)).squeeze(0)
+        
         self.device = edge_image.device
-        self.height = edge_image.shape[0]
-        self.width = edge_image.shape[1]
+        height = edge_image.shape[0]
+        width = edge_image.shape[1]
+
+        intpol_edge_image = F.interpolate(
+            edge_image.unsqueeze(0).unsqueeze(0).float(),
+            size=[height*3, width*3],
+            mode="bicubic",
+            align_corners=False
+        ).squeeze(0).squeeze(0)
+
+        self.height = height * 3
+        self.width = width * 3
+        self.negative_sdf = image_to_negative_sdf(intpol_edge_image.unsqueeze(0)).squeeze(0)
         self.interpolation_mode = interpolation_mode
 
         with open("config.yaml", "r") as f:
@@ -33,7 +43,6 @@ class Drawer():
         self.prefered_distance = line_preference["distance"]
         self.prefered_sigma = float(line_preference["sigma"])
         self.prefered_radius = float(line_preference["radius"])
-
         self.stroke = torch.zeros(0, 4, device=self.device)
 
     def trace_edge_using_grad(self) -> bool:
@@ -99,13 +108,15 @@ class Drawer():
             self.negative_sdf, 
             position=last_point, 
             magnatude=self.prefered_distance,
-            search_radius=self.prefered_distance*2,
+            search_radius=self.prefered_distance+3,
         )
         if vector[0] == 0 and vector[1] == 0:
             is_complete = True
         else:
-            self.stroke[-1, 0:2] = last_point + vector
-            self.update_negative_sdf(self.stroke[-1, 0:2])
+            new_point = last_point + vector
+            self.update_negative_sdf(new_point)
+            self.stroke[-1, 0:2] = new_point
+            
 
         
         return is_complete
@@ -115,6 +126,7 @@ class Drawer():
 
         H, W = self.negative_sdf.shape
         x, y = torch.unbind(new_point, dim=0)
+        print(x, y)
         radius = self.prefered_distance
 
         x_start = torch.clip(x - radius, 0, W).__int__()
@@ -248,28 +260,19 @@ class Drawer():
 
         else:
 
-            canvas = self.canvas(raw_sdf=True)
-            canvas = canvas.squeeze(0)
-
             canvas_drawing = self.canvas()
             canvas_drawing = canvas_drawing.squeeze(0).detach().cpu()
 
-            canvas = canvas.detach().cpu()
             other_image = other_image.detach().cpu()
-
             fig, axes = plt.subplots(1, 3, figsize=(30, 10))
 
+            canvas = ~( (other_image<0) + (canvas_drawing<0.5) )
+            canvas = canvas.detach().cpu()
+
             axes[0].imshow(canvas, cmap='grey')
-            axes[0].set_title("AI Raw SDF")
-            axes[0].axis('off')
-
-            axes[1].imshow(canvas_drawing, cmap='grey', vmin=0, vmax=1)
-            axes[1].set_title("AI Drawing")
-            axes[1].axis('off')
-
+            axes[0].scatter(self.stroke[-1, 0].detach().cpu(), self.stroke[-1, 1].detach().cpu())
+            axes[1].imshow(canvas_drawing, cmap='grey')
             axes[2].imshow(other_image, cmap='grey')
-            axes[2].set_title("Image with Filter")
-            axes[2].axis('off')
 
             plt.tight_layout()
             plt.show()
@@ -398,8 +401,11 @@ if __name__ == "__main__":
 
     drawer = Drawer(edge_image=canny)
     
-    for _ in range(300):
-        drawer.trace_edge()
+    for _ in range(30):
+        complete = drawer.trace_edge()
+        if complete:
+            break
+        
         
     drawer.render(other_image=canny)
 
