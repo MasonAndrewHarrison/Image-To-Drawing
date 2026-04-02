@@ -118,7 +118,6 @@ def render_sdf(stroke: torch.Tensor, height: int, width: int, raw_sdf: bool) -> 
 
     line_count = stroke.shape[0]
 
-    print(stroke)
     if line_count == 1:
         return render_point_sdf(stroke, height, width, raw_sdf)
 

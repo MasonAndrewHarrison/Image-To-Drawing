@@ -1,7 +1,7 @@
 
 
 prefered_line:
-  distance: 1
+  distance: 30
   sigma: 3e-3
   radius: 3e-3
 

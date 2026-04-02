@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 from differentiable_rasterizer import render_sdf, image_to_sdf
-from utils import points_from_sdf, nested_smoothstep, points_from_image, faster_point_from_image
+from utils import *
 from torchvision import datasets, transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader, Dataset
@@ -20,6 +20,7 @@ class Drawer():
     def __init__(self, edge_image, interpolation_mode: str = 'bicubic'):
 
         self.edge_image = edge_image
+        self.negative_sdf = image_to_negative_sdf(edge_image.unsqueeze(0)).squeeze(0)
         self.device = edge_image.device
         self.height = edge_image.shape[0]
         self.width = edge_image.shape[1]
@@ -35,7 +36,7 @@ class Drawer():
 
         self.stroke = torch.zeros(0, 4, device=self.device)
 
-    def trace_edge(self) -> bool:
+    def trace_edge_using_grad(self) -> bool:
 
         points_in_stroke = self.stroke.shape[0]
 
@@ -72,6 +73,58 @@ class Drawer():
         is_complete = False
 
         return is_complete
+
+    def trace_edge(self):
+
+        points_in_stroke = self.stroke.shape[0]
+        is_complete = False
+
+        if points_in_stroke < 1:
+            new_point = torch.tensor(
+                [
+                    self.width / 2, 
+                    self.height / 2, 
+                    self.prefered_sigma, 
+                    self.prefered_radius,
+                ]
+                , device=self.device
+            ).unsqueeze(0)
+            self.draw(new_point)
+        else:
+            last_point = self.stroke[-1, :].unsqueeze(0)
+            self.draw(last_point)
+
+        last_point = self.stroke[-1, 0:2]
+        vector = vec_to_lowest_point(
+            self.negative_sdf, 
+            position=last_point, 
+            magnatude=self.prefered_distance,
+            search_radius=self.prefered_distance*2,
+        )
+        if vector[0] == 0 and vector[1] == 0:
+            is_complete = True
+        else:
+            self.stroke[-1, 0:2] = last_point + vector
+            self.update_negative_sdf(self.stroke[-1, 0:2])
+
+        
+        return is_complete
+        
+
+    def update_negative_sdf(self, new_point):
+
+        H, W = self.negative_sdf.shape
+        x, y = torch.unbind(new_point, dim=0)
+        radius = self.prefered_distance
+
+        x_start = torch.clip(x - radius, 0, W).__int__()
+        x_end = torch.clip(x + radius, 0, W).__int__()
+        y_start = torch.clip(y - radius, 0, H).__int__()
+        y_end = torch.clip(y + radius, 0, H).__int__()
+
+        mask = ~create_circle_mask(radius, device=self.device)
+
+        self.negative_sdf[y_start:y_end, x_start:x_end] = torch.where(mask, self.negative_sdf[y_start:y_end, x_start:x_end], 0)
 
     def update_edge_image(self, new_point):
 
@@ -183,7 +236,7 @@ class Drawer():
 
     def render(self, other_image=None):
 
-        other_image=self.edge_image
+        other_image=self.negative_sdf
 
         if other_image is None:
 
@@ -340,7 +393,7 @@ if __name__ == "__main__":
     image,_ = dataset[0]
     _, height, width = image.shape
     image = image.mean(0).unsqueeze(0).unsqueeze(0).to(device)
-    canny = filter.canny(image).squeeze(0).squeeze(0)
+    canny = filter.ex_difference_of_gaussians(image).squeeze(0).squeeze(0)
     sdf = image_to_sdf(canny).squeeze(0)
 
     drawer = Drawer(edge_image=canny)

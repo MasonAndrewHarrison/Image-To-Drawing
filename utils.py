@@ -183,33 +183,64 @@ def nested_smoothstep(t, iterations=1):
 
     return out
 
+def create_circle_mask(radius, device):
 
-def lowest_point(negative_sdf, position, radius: int = -1):
+    pixel_y, pixel_x = torch.meshgrid(
+        torch.arange(radius*2, device=device),
+        torch.arange(radius*2, device=device),
+        indexing='ij'
+    )
+    circle_sdf = torch.sqrt((pixel_x - radius)**2 + (pixel_y - radius)**2 + 1e-8)
+    mask = circle_sdf < radius
+
+    return mask
+
+def search_lowest_point(negative_sdf, position, radius: int = -1):
 
     """
     Image_sdf is expected to be in [H, W]. 
     Positions is expected to be in [2] (x, y).
-    Output will be a the position of the closest point.
+    Output will be a the position of the lowest point in the range.
     """
 
     H, W = negative_sdf.shape
     x, y = torch.unbind(position, dim=0)
+    x_start = 0
+    y_start = 0
 
-    x_start = torch.clip(x - radius, 0, W).__int__()
-    x_end = torch.clip(x + radius, 0, W).__int__()
-    y_start = torch.clip(y - radius, 0, H).__int__()
-    y_end = torch.clip(y + radius, 0, H).__int__()
+    if radius != -1:
+        x_start = torch.clip(x - radius, 0, W).__int__()
+        x_end = torch.clip(x + radius, 0, W).__int__()
+        y_start = torch.clip(y - radius, 0, H).__int__()
+        y_end = torch.clip(y + radius, 0, H).__int__()
 
-    negative_sdf = negative_sdf[x_start:x_end, y_start:y_end]
-    plt.imshow(negative_sdf.detach().cpu(), cmap="grey")
-    plt.show()
-    """edge_coords = torch.nonzero(~edge_image, as_tuple=False).float() 
-
-    edge_y = edge_coords[:, 0] + y_start
-    edge_x = edge_coords[:, 1] + x_start"""
-
-    return position
+        negative_sdf = negative_sdf[x_start:x_end, y_start:y_end]
+        mask = create_circle_mask(radius, device=position.device)
+        negative_sdf = torch.where(mask, negative_sdf, 0)
     
+    flatten_sdf = negative_sdf.view(-1)
+    lowest_value, lowest_idx = torch.min(flatten_sdf, dim=0)
+    
+    if lowest_value == 0:
+        return torch.tensor([0, 0], device=position.device)
+
+    lowest_x = x_start + torch.floor(lowest_idx/ (radius*2))
+    lowest_y = y_start + lowest_idx % (radius*2)
+
+    return torch.tensor([lowest_x, lowest_y], device=position.device)
+
+def vec_to_lowest_point(negative_sdf, position, magnatude, search_radius: int = -1):
+
+    lowest_point = search_lowest_point(negative_sdf, position, search_radius)
+    if lowest_point[0] == 0 and lowest_point[1] == 0:
+        return lowest_point
+
+    vector = lowest_point - position
+    current_magnatude = torch.sqrt(vector[0]**2 + vector[1]**2)
+    k = magnatude / current_magnatude
+    scaled_vec = vector * k
+    return scaled_vec
+
 
 
 if __name__ == "__main__":
@@ -233,10 +264,12 @@ if __name__ == "__main__":
     ).squeeze(0).squeeze(0)
 
 
-    point = torch.tensor([200, 400], device=device)
+    point = torch.tensor([30, 30], device=device)
 
     negative_sdf = image_to_negative_sdf(canny.unsqueeze(0)).squeeze(0)
-    point = lowest_point(negative_sdf, point, radius=50)
+    vector = vec_to_lowest_point(negative_sdf, point, search_radius=20, magnatude=10)
+    print(vector)
+    point = point + vector
     
     plt.imshow(negative_sdf.detach().cpu(), cmap="grey")
     plt.scatter(point[1].cpu().numpy(), point[0].cpu().numpy())
