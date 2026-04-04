@@ -231,17 +231,38 @@ def search_lowest_point(negative_sdf, position, radius: int = -1):
 
     return torch.tensor([lowest_x, lowest_y], device=position.device)
 
-def vec_to_lowest_point(negative_sdf, position, magnatude, search_radius: int = -1):
+def vec_to_lowest_point(negative_sdf, position, search_radius: int = -1, magnatude: int = -1):
 
     lowest_point = search_lowest_point(negative_sdf, position, search_radius)
     if lowest_point[0] == 0 and lowest_point[1] == 0:
         return lowest_point
 
     vector = lowest_point - position
-    current_magnatude = torch.sqrt(vector[0]**2 + vector[1]**2)
-    k = magnatude / current_magnatude
-    scaled_vec = vector * k
-    return scaled_vec
+    if magnatude == -1:
+        return vector
+    else:
+        current_magnatude = torch.sqrt(vector[0]**2 + vector[1]**2)
+        k = magnatude / current_magnatude
+        scaled_vec = vector * k
+        return scaled_vec
+
+def erase_negative_sdf(negative_sdf, point, radius):
+
+    H, W = negative_sdf.shape
+    x, y = torch.unbind(point, dim=0)
+    print(x, y)
+    radius = 10
+
+    x_start = torch.clip(x - radius, 0, W).__int__()
+    x_end = torch.clip(x + radius, 0, W).__int__()
+    y_start = torch.clip(y - radius, 0, H).__int__()
+    y_end = torch.clip(y + radius, 0, H).__int__()
+
+    mask = ~create_circle_mask(radius, device=device)
+
+    negative_sdf[y_start:y_end, x_start:x_end] = torch.where(mask, negative_sdf[y_start:y_end, x_start:x_end], 0)
+
+    return negative_sdf
 
 
 
@@ -270,29 +291,16 @@ if __name__ == "__main__":
     og = point.clone()
 
     negative_sdf = image_to_negative_sdf(canny.unsqueeze(0)).squeeze(0)
-    vector = vec_to_lowest_point(negative_sdf, point, search_radius=40, magnatude=10)
-    print(vector)
+    vector = vec_to_lowest_point(negative_sdf, point)
 
-
+    #TODO why is this vector so large?????
+    print(f"print first vector{vector}")
     point = point + vector
 
-    
-    H, W = negative_sdf.shape
-    x, y = torch.unbind(point, dim=0)
-    print(x, y)
-    radius = 10
-
-    x_start = torch.clip(x - radius, 0, W).__int__()
-    x_end = torch.clip(x + radius, 0, W).__int__()
-    y_start = torch.clip(y - radius, 0, H).__int__()
-    y_end = torch.clip(y + radius, 0, H).__int__()
-
-    mask = ~create_circle_mask(radius, device=device)
-
-    negative_sdf[y_start:y_end, x_start:x_end] = torch.where(mask, negative_sdf[y_start:y_end, x_start:x_end], 0)
+    #negative_sdf = erase_negative_sdf(negative_sdf, point, 20)
 
 
-    vector = vec_to_lowest_point(negative_sdf, point, search_radius=25, magnatude=20)
+    vector = vec_to_lowest_point(negative_sdf, point, search_radius=22)
     print(vector)
     point2 = point + vector
     
