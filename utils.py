@@ -220,20 +220,25 @@ def search_lowest_point(negative_sdf, position, radius: int = -1):
         plt.imshow(negative_sdf.detach().cpu(), cmap="grey")
         plt.show()
     
+    updated_H, updated_W = negative_sdf.shape
     flatten_sdf = negative_sdf.view(-1)
     lowest_value, lowest_idx = torch.min(flatten_sdf, dim=0)
+
+    print(lowest_value, lowest_idx)
     
     if lowest_value == 0:
         return torch.tensor([0, 0], device=position.device)
 
-    lowest_x = x_start + torch.floor(lowest_idx/ (radius*2))
-    lowest_y = y_start + lowest_idx % (radius*2)
+    else:
+        lowest_x = x_start + lowest_idx % (updated_W)
+        lowest_y = y_start + torch.floor(lowest_idx/ updated_H)
 
-    return torch.tensor([lowest_x, lowest_y], device=position.device)
+        return torch.tensor([lowest_x, lowest_y], device=position.device)
 
 def vec_to_lowest_point(negative_sdf, position, search_radius: int = -1, magnatude: int = -1):
 
     lowest_point = search_lowest_point(negative_sdf, position, search_radius)
+    print(lowest_point)
     if lowest_point[0] == 0 and lowest_point[1] == 0:
         return lowest_point
 
@@ -250,7 +255,6 @@ def erase_negative_sdf(negative_sdf, point, radius):
 
     H, W = negative_sdf.shape
     x, y = torch.unbind(point, dim=0)
-    print(x, y)
     radius = 10
 
     x_start = torch.clip(x - radius, 0, W).__int__()
@@ -260,7 +264,8 @@ def erase_negative_sdf(negative_sdf, point, radius):
 
     mask = ~create_circle_mask(radius, device=device)
 
-    negative_sdf[y_start:y_end, x_start:x_end] = torch.where(mask, negative_sdf[y_start:y_end, x_start:x_end], 0)
+    partial_negative_sdf = negative_sdf[y_start:y_end, x_start:x_end]
+    negative_sdf[y_start:y_end, x_start:x_end] = torch.where(mask, partial_negative_sdf, 0)
 
     return negative_sdf
 
@@ -288,10 +293,10 @@ if __name__ == "__main__":
     ).squeeze(0).squeeze(0)
 
     point = torch.tensor([(height*scaler)/2, (width*scaler)/2], device=device)
-    og = point.clone()
+    og = torch.tensor([(height*scaler)/2, (width*scaler)/2], device=device)
 
     negative_sdf = image_to_negative_sdf(canny.unsqueeze(0)).squeeze(0)
-    vector = vec_to_lowest_point(negative_sdf, point)
+    vector = vec_to_lowest_point(negative_sdf, point, search_radius=20)
 
     #TODO why is this vector so large?????
     print(f"print first vector{vector}")
@@ -300,13 +305,20 @@ if __name__ == "__main__":
     #negative_sdf = erase_negative_sdf(negative_sdf, point, 20)
 
 
-    vector = vec_to_lowest_point(negative_sdf, point, search_radius=22)
+    """vector = vec_to_lowest_point(negative_sdf, point, search_radius=22)
     print(vector)
-    point2 = point + vector
+    point2 = point + vector"""
     
     plt.imshow(negative_sdf.detach().cpu(), cmap="grey")
-    plt.scatter(point[1].cpu().numpy(), point[0].cpu().numpy())
-    plt.scatter(point2[1].cpu().numpy(), point2[0].cpu().numpy())
-    plt.scatter(og[1].cpu().numpy(), og[0].cpu().numpy())
+    plt.scatter(point[0].cpu().numpy(), point[1].cpu().numpy())
+    #plt.scatter(point2[1].cpu().numpy(), point2[0].cpu().numpy())
+    plt.scatter(og[0].cpu().numpy(), og[1].cpu().numpy())
+
+    plt.annotate(
+        "OG",
+        (point[0].cpu().numpy(), point[1].cpu().numpy()),
+        color="blue",
+        fontsize=10,
+    )
     plt.show()
 
