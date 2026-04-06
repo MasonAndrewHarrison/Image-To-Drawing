@@ -217,28 +217,23 @@ def search_lowest_point(negative_sdf, position, radius: int = -1):
         negative_sdf = negative_sdf[y_start:y_end, x_start:x_end]
         mask = create_circle_mask(radius, device=position.device)
         negative_sdf = torch.where(mask, negative_sdf, 0)
-        plt.imshow(negative_sdf.detach().cpu(), cmap="grey")
-        plt.show()
     
     updated_H, updated_W = negative_sdf.shape
     flatten_sdf = negative_sdf.view(-1)
     lowest_value, lowest_idx = torch.min(flatten_sdf, dim=0)
-
-    print(lowest_value, lowest_idx)
     
     if lowest_value == 0:
         return torch.tensor([0, 0], device=position.device)
 
     else:
         lowest_x = x_start + lowest_idx % (updated_W)
-        lowest_y = y_start + torch.floor(lowest_idx/ updated_H)
+        lowest_y = y_start + torch.floor(lowest_idx/ updated_W)
 
         return torch.tensor([lowest_x, lowest_y], device=position.device)
 
 def vec_to_lowest_point(negative_sdf, position, search_radius: int = -1, magnatude: int = -1):
 
     lowest_point = search_lowest_point(negative_sdf, position, search_radius)
-    print(lowest_point)
     if lowest_point[0] == 0 and lowest_point[1] == 0:
         return lowest_point
 
@@ -298,26 +293,37 @@ if __name__ == "__main__":
     negative_sdf = image_to_negative_sdf(canny.unsqueeze(0)).squeeze(0)
     vector = vec_to_lowest_point(negative_sdf, point, search_radius=20)
 
-    #TODO why is this vector so large?????
     print(f"print first vector{vector}")
     point = point + vector
 
-    #negative_sdf = erase_negative_sdf(negative_sdf, point, 20)
+    negative_sdf = erase_negative_sdf(negative_sdf, point, 15)
 
 
-    """vector = vec_to_lowest_point(negative_sdf, point, search_radius=22)
+    vector = vec_to_lowest_point(negative_sdf, point, search_radius=20)
     print(vector)
-    point2 = point + vector"""
+    point2 = point + vector
     
     plt.imshow(negative_sdf.detach().cpu(), cmap="grey")
     plt.scatter(point[0].cpu().numpy(), point[1].cpu().numpy())
-    #plt.scatter(point2[1].cpu().numpy(), point2[0].cpu().numpy())
+    plt.scatter(point2[0].cpu().numpy(), point2[1].cpu().numpy())
     plt.scatter(og[0].cpu().numpy(), og[1].cpu().numpy())
 
     plt.annotate(
         "OG",
+        (og[0].cpu().numpy(), og[1].cpu().numpy()),
+        color="orange",
+        fontsize=10,
+    )
+    plt.annotate(
+        "P1",
         (point[0].cpu().numpy(), point[1].cpu().numpy()),
-        color="blue",
+        color="red",
+        fontsize=10,
+    )
+    plt.annotate(
+        "P2",
+        (point2[0].cpu().numpy(), point2[1].cpu().numpy()),
+        color="red",
         fontsize=10,
     )
     plt.show()

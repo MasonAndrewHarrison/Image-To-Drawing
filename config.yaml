@@ -1,7 +1,8 @@
 
 
 prefered_line:
-  distance: 12
+  search_radius_min: 10
+  search_radius_max: 12
   sigma: 3e-3
   radius: 3e-3
 

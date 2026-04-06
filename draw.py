@@ -40,7 +40,8 @@ class Drawer():
             config = yaml.safe_load(f)
         line_preference = config["prefered_line"]
 
-        self.prefered_distance = line_preference["distance"]
+        self.search_r_min = line_preference["search_radius_min"]
+        self.search_r_max = line_preference["search_radius_max"]
         self.prefered_sigma = float(line_preference["sigma"])
         self.prefered_radius = float(line_preference["radius"])
         self.stroke = torch.zeros(0, 4, device=self.device)
@@ -107,8 +108,8 @@ class Drawer():
         vector = vec_to_lowest_point(
             self.negative_sdf, 
             position=last_point, 
-            magnatude=self.prefered_distance,
-            search_radius=self.prefered_distance+3,
+            magnatude=-1,
+            search_radius=self.search_r_max
         )
         if vector[0] == 0 and vector[1] == 0:
             is_complete = True
@@ -126,8 +127,7 @@ class Drawer():
 
         H, W = self.negative_sdf.shape
         x, y = torch.unbind(new_point, dim=0)
-        print(x, y)
-        radius = self.prefered_distance
+        radius = self.search_r_min
 
         x_start = torch.clip(x - radius, 0, W).__int__()
         x_end = torch.clip(x + radius, 0, W).__int__()
@@ -408,9 +408,6 @@ if __name__ == "__main__":
         
         
     drawer.render(other_image=canny)
-
-
-    #distance, point = drawer.all_points_from_sdf(sdf)
     
     
     
