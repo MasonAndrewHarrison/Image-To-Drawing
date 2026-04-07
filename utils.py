@@ -11,149 +11,8 @@ from scipy.ndimage import distance_transform_edt
 import numpy as np
 import time
 from typing_extensions import deprecated
-
-def points_from_sdf(image_sdf, positions, interpolatiowidthn_mode: str = 'bilinear'):
-
-    """
-    Image_sdf is expected to be in [H, W]. 
-    Positions is expected to be in [N, 2]
-    Output will be [N]
-    """
-
-    H, W = image_sdf.shape
-    N = positions.shape[1]
-    x, y = torch.unbind(positions, dim=1)
-
-    x = x.unsqueeze(0).unsqueeze(0)
-    y = y.unsqueeze(0).unsqueeze(0)
-    image_sdf = image_sdf.unsqueeze(0).unsqueeze(0)
-
-    x_norm = (x / (W - 1)) * 2 - 1  
-    y_norm = (y / (H - 1)) * 2 - 1  
-
-    grid = torch.stack([x_norm, y_norm], dim=-1) 
-    sampled = F.grid_sample(image_sdf, grid, mode=interpolation_mode, align_corners=True)
-
-    return sampled[0, 0, 0, :]
-
-def partial_point_from_image(edge_image, position, radius):
-
-    """
-    Image_sdf is expected to be in [H, W]. 
-    Positions is expected to be in [2] (x, y).
-    Output will be a scaler. Output will be -1 if 
-    nothing is found or outside of radius.
-    This function is not differantable and incompatable
-    with pytorch autograd.
-    """
-
-    H, W = edge_image.shape
-    x, y = torch.unbind(position, dim=0)
-
-    x_start = torch.clip(x - radius, 0, W).__int__()
-    x_end = torch.clip(x + radius, 0, W).__int__()
-    y_start = torch.clip(y - radius, 0, H).__int__()
-    y_end = torch.clip(y + radius, 0, H).__int__()
-
-    edge_image = edge_image[y_start:y_end, x_start:x_end]
-    edge_coords = torch.nonzero(~edge_image, as_tuple=False).float() 
-
-    edge_y = edge_coords[:, 0] + y_start
-    edge_x = edge_coords[:, 1] + x_start
-    
-    distance = torch.sqrt((edge_x - x)**2 + (edge_y - y)**2 + 1e-8)
-
-    if distance.shape[0] == 0:
-        return -1
-    else:
-        smallest_dist, closest_idx = torch.min(distance, dim=0)
-
-        if smallest_dist > radius:
-            return -1
-        else:
-            return smallest_dist
-
-def faster_point_from_image(edge_image, position):
-
-    """
-    Image_sdf is expected to be in [H, W]. 
-    Positions is expected to be in [2] (x, y).
-    Output will be a scaler.
-    """
-
-    H, W = edge_image.shape
-    x, y = torch.unbind(position, dim=0)
-
-    edge_coords = torch.nonzero(~edge_image, as_tuple=False).float() 
-
-    edge_y = edge_coords[:, 0]
-    edge_x = edge_coords[:, 1]
-    
-    distance = torch.sqrt((edge_x - x)**2 + (edge_y - y)**2 + 1e-8)
-    
-    return distance.min()
-
-@deprecated("Use faster_point_from_image instead")
-def point_from_image(edge_image, position, interpolation_mode: str = 'bilinear'):
-
-    """
-    Image_sdf is expected to be in [H, W]. 
-    Positions is expected to be in [2] (x, y).
-    Output will be a scaler.
-    """
-
-    edge_image = edge_image.squeeze(0)
-    sdf = image_to_sdf(image=edge_image).squeeze(0)
-
-    H, W = sdf.shape
-    x, y = torch.unbind(position.unsqueeze(0), dim=1)
-    sdf = sdf.squeeze() 
-
-    x0, y0 = x.floor().long(), y.floor().long()
-    x1, y1 = (x0 + 1).clamp(max=W-1), (y0 + 1).clamp(max=H-1)
-    x0, y0 = x0.clamp(min=0, max=W-1), y0.clamp(min=0, max=H-1)
-
-    wa = (x1 - x) * (y1 - y)
-    wb = (x1 - x) * (y - y0)
-    wc = (x - x0) * (y1 - y)
-    wd = (x - x0) * (y - y0)
-
-    x0, y0, x1, y1 = x0.squeeze(), y0.squeeze(), x1.squeeze(), y1.squeeze()
-    distance = \
-        wa.squeeze() * sdf[y0, x0] + \
-        wb.squeeze() * sdf[y1, x0] + \
-        wc.squeeze() * sdf[y0, x1] + \
-        wd.squeeze() * sdf[y1, x1]
-
-    return distance 
-
-
-def points_from_image(edge_image, positions, interpolation_mode: str = 'bilinear'):
-
-    """
-    Edge Image is expected to be in [H, W]. 
-    Positions is expected to be in [N, 2]
-    Output will be [N]
-    """
-
-    edge_image = edge_image.squeeze(0)
-    image_sdf = image_to_sdf(image=edge_image).squeeze(0)
-
-    H, W = image_sdf.shape
-    x, y = torch.unbind(positions, dim=1)
-
-    x = x.unsqueeze(0).unsqueeze(0)
-    y = y.unsqueeze(0).unsqueeze(0)
-    image_sdf = image_sdf.unsqueeze(0).unsqueeze(0)
-    
-
-    x_norm = (x / (W - 1)) * 2 - 1  
-    y_norm = (y / (H - 1)) * 2 - 1  
-
-    grid = torch.stack([x_norm, y_norm], dim=-1) 
-    sampled = F.grid_sample(image_sdf, grid, mode=interpolation_mode, align_corners=True)
-
-    return sampled[0, 0, 0, :]
+import cv2
+import numpy as np
 
 
 def smoothstep(a, b, t):
@@ -264,6 +123,65 @@ def erase_negative_sdf(negative_sdf, point, radius):
 
     return negative_sdf
 
+def filter_noise(num_labels, labels, stats, size_threshold: int = 300):
+    """
+    This takes in np.uint8 as input.
+    """
+
+    filtered = np.zeros_like(labels, dtype=np.uint8)
+
+    for i in range(1, num_labels):
+        size = stats[i, cv2.CC_STAT_AREA]
+        if size > size_threshold:
+            filtered[labels == i] = labels[labels == i]
+
+    return num_labels, filtered, stats
+
+def density_filter(num_labels, labels, stats, density_threshold: float = 17.25):
+    """
+    This takes in np.uint8 as input.
+    """
+
+    filtered = np.zeros_like(labels, dtype=np.uint8)
+
+    for i in range(1, num_labels):
+        height = stats[i, cv2.CC_STAT_HEIGHT]
+        width = stats[i, cv2.CC_STAT_WIDTH]
+        area = stats[i, cv2.CC_STAT_AREA]
+
+        vertical_density = area / height
+        horizontal_density = area / width
+
+        if (vertical_density < density_threshold) or (horizontal_density < density_threshold):
+            filtered[labels == i] = labels[labels == i]
+
+    return num_labels, filtered, stats
+
+
+def separate_pixels(image):
+    """
+    This takes in torch.uint8 as input. And
+    return np.uint8 as output.
+    """
+
+    image = image.detach().cpu().numpy().astype(np.uint8)
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(image)
+
+    return num_labels, labels, stats
+
+def separate_to_layers(num_labels, labels):
+
+    layers = np.zeros((0, *labels.shape), dtype=np.uint8)
+
+    for i in range(1, num_labels):
+        new_layer = (labels == i)
+        not_empty = new_layer.sum() > 0
+        if not_empty:
+
+            new_layer = new_layer.reshape(1, *new_layer.shape)
+            layers = np.concatenate([layers, new_layer], axis=0)
+
+    return layers
 
 
 if __name__ == "__main__":
@@ -277,54 +195,19 @@ if __name__ == "__main__":
     image,_ = dataset[0]
     _, height, width = image.shape
     image = image.mean(0).unsqueeze(0).unsqueeze(0).to(device)
-    canny = filter.ex_difference_of_gaussians(image)
-    scaler = 5
+    ex_dog = filter.ex_difference_of_gaussians(image, threshold=0.05)
+    scaler = 4
     
-    canny = F.interpolate(
-        canny.float(),
+    ex_dog = F.interpolate(
+        ex_dog.float(),
         size=[height*scaler, width*scaler],
         mode="bicubic",
         align_corners=False
     ).squeeze(0).squeeze(0)
+    binary = (ex_dog < 0.5).to(torch.uint8)
 
-    point = torch.tensor([(height*scaler)/2, (width*scaler)/2], device=device)
-    og = torch.tensor([(height*scaler)/2, (width*scaler)/2], device=device)
-
-    negative_sdf = image_to_negative_sdf(canny.unsqueeze(0)).squeeze(0)
-    vector = vec_to_lowest_point(negative_sdf, point, search_radius=20)
-
-    print(f"print first vector{vector}")
-    point = point + vector
-
-    negative_sdf = erase_negative_sdf(negative_sdf, point, 15)
-
-
-    vector = vec_to_lowest_point(negative_sdf, point, search_radius=20)
-    print(vector)
-    point2 = point + vector
-    
-    plt.imshow(negative_sdf.detach().cpu(), cmap="grey")
-    plt.scatter(point[0].cpu().numpy(), point[1].cpu().numpy())
-    plt.scatter(point2[0].cpu().numpy(), point2[1].cpu().numpy())
-    plt.scatter(og[0].cpu().numpy(), og[1].cpu().numpy())
-
-    plt.annotate(
-        "OG",
-        (og[0].cpu().numpy(), og[1].cpu().numpy()),
-        color="orange",
-        fontsize=10,
-    )
-    plt.annotate(
-        "P1",
-        (point[0].cpu().numpy(), point[1].cpu().numpy()),
-        color="red",
-        fontsize=10,
-    )
-    plt.annotate(
-        "P2",
-        (point2[0].cpu().numpy(), point2[1].cpu().numpy()),
-        color="red",
-        fontsize=10,
-    )
-    plt.show()
+    data = separate_pixels(binary)
+    data = filter_noise(*data)
+    num_labels, labels,_ = density_filter(*data)
+    layers = separate_to_layers(num_labels, labels)
 
