@@ -12,7 +12,7 @@ import yaml
 import random
 import time
 
-#TODO rewrite everything in taichi, c or c++
+#TODO rewrite everything in taichi
 
 
 class Canvas():
@@ -61,6 +61,22 @@ class Canvas():
 
         self.layers = separate_to_layers(num_labels, labels)
 
+    def trace_layer(self, index):
+
+        ...
+
+    def trace_all_layer(self):
+
+        ...
+
+    def render_layer(self, index):
+
+        ...
+
+    def render_all_layers(self):
+
+        ...
+
 
 
 class Drawer():
@@ -83,6 +99,7 @@ class Drawer():
         self.search_r_max = line_preference["search_radius_max"]
         self.prefered_sigma = float(line_preference["sigma"])
         self.prefered_radius = float(line_preference["radius"])
+        self.magnatude = float(line_preference["magnatude"])
         self.stroke = torch.zeros(0, 4, device=self.device)
 
     def trace_edge(self):
@@ -108,13 +125,12 @@ class Drawer():
 
 
         search_radius = self.search_r_max if not first_stroke else -1
-        print(search_radius)
 
         last_point = self.stroke[-1, 0:2]
         vector = vec_to_lowest_point(
             self.negative_sdf, 
             position=last_point, 
-            magnatude=-1,
+            magnatude=self.magnatude,
             search_radius=search_radius
         )
         if vector[0] == 0 and vector[1] == 0:
@@ -135,11 +151,9 @@ class Drawer():
         x, y = torch.unbind(new_point, dim=0)
         radius = self.search_r_min
         padding = self.search_r_max + 1
-
-        print(x,y, H, W)    
+  
         x = torch.clip(x, padding, W - padding)
         y = torch.clip(y, padding, H - padding)
-        print(x,y, H, W)
 
         x_start = torch.clip(x - radius, 0, W).__int__()
         x_end = torch.clip(x + radius, 0, W).__int__()
@@ -148,7 +162,6 @@ class Drawer():
 
         mask = ~create_circle_mask(radius, device=self.device)
 
-        print(mask.shape, self.negative_sdf[y_start:y_end, x_start:x_end].shape)
         updated_patch = torch.where(mask, self.negative_sdf[y_start:y_end, x_start:x_end], 0)
         self.negative_sdf[y_start:y_end, x_start:x_end] = updated_patch
 

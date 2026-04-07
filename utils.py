@@ -109,7 +109,6 @@ def erase_negative_sdf(negative_sdf, point, radius):
 
     H, W = negative_sdf.shape
     x, y = torch.unbind(point, dim=0)
-    radius = 10
 
     x_start = torch.clip(x - radius, 0, W).__int__()
     x_end = torch.clip(x + radius, 0, W).__int__()

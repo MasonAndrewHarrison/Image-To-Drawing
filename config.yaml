@@ -5,6 +5,7 @@ prefered_line:
   search_radius_max: 25
   sigma: 3e-3
   radius: 3e-3
+  magnatude: -1
 
 filter:
   size_threshold: 300
