@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
-from differentiable_rasterizer import render_sdf, image_to_sdf
+from differentiable_rasterizer import render_sdf, image_to_sdf, render_sdf_batched
 from utils import *
 from torchvision import datasets, transforms
 from torchvision.datasets import ImageFolder
@@ -18,6 +18,8 @@ import time
 class Canvas():
 
     def __init__(self, image):
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         _, height, width = image.shape
         image = image.mean(0).unsqueeze(0).unsqueeze(0).to(device)
@@ -49,6 +51,9 @@ class Canvas():
         ).squeeze(0).squeeze(0)
         binary = (ex_dog < 0.5).to(torch.uint8)
 
+        self.height = binary.shape[0]
+        self.width = binary.shape[1]
+
         data = separate_pixels(binary)
         data = filter_noise(
             *data, 
@@ -59,37 +64,66 @@ class Canvas():
             density_threshold=self.density_threshold
         )
 
-        self.layers = separate_to_layers(num_labels, labels)
+        layers = separate_to_layers(num_labels, labels)
+        self.layers = torch.tensor(layers, device=device)
+        self.strokes = []
+
+    def colapsed_layers(self):
+    
+        return self.layers.sum(axis=0)
 
     def trace_layer(self, index):
 
-        ...
+        layer = self.layers[index, :, :]
+        drawer = Drawer(edge_image=layer)
+
+        for _ in range(200):
+            complete, left_over_layer = drawer.trace_edge()
+            if complete:
+                break
+
+        drawer.reverse_order()
+
+        for _ in range(200):
+            complete, left_over_layer = drawer.trace_edge()
+            if complete:
+                break
+
+        self.strokes.append(drawer.stroke)
+        
+        if left_over_layer.sum() != 0:
+            self.layers[index, :, :] = left_over_layer
+            self.trace_layer(index)
 
     def trace_all_layer(self):
 
         ...
 
-    def render_layer(self, index):
+    def render_strokes(self):
 
-        ...
-
-    def render_all_layers(self):
-
-        ...
+        render_sdf_batched(self.strokes, self.height, self.width, False)
 
 
 
 class Drawer():
 
-    def __init__(self, edge_image, interpolation_mode: str = 'bicubic'):
+    def __init__(self, edge_image=None, negative_sdf=None):
         
-        self.device = edge_image.device
-        self.height = edge_image.shape[0]
-        self.width = edge_image.shape[1]
+        if edge_image is not None:
 
-        binary = edge_image < 0.5
-        self.negative_sdf = image_to_negative_sdf(binary.unsqueeze(0)).squeeze(0)
-        self.interpolation_mode = interpolation_mode
+            self.device = edge_image.device
+            self.height = edge_image.shape[0]
+            self.width = edge_image.shape[1]
+
+            binary = edge_image < 0.5
+            self.negative_sdf = image_to_negative_sdf(binary.unsqueeze(0)).squeeze(0)
+
+        elif negative_sdf is not None:
+
+            self.device = negative_sdf.device
+            self.height = negative_sdf.shape[0]
+            self.width = negative_sdf.shape[1]
+            self.negative_sdf = negative_sdf
 
         with open("config.yaml", "r") as f:
             config = yaml.safe_load(f)
@@ -140,9 +174,9 @@ class Drawer():
             self.update_negative_sdf(new_point)
             self.stroke[-1, 0:2] = new_point
             
-
+        left_over_layer = (self.negative_sdf != 0)
         
-        return is_complete
+        return (is_complete, left_over_layer)
         
 
     def update_negative_sdf(self, new_point):
@@ -210,8 +244,6 @@ class Drawer():
 
     def render(self, other_image=None):
 
-        other_image=self.negative_sdf
-
         if other_image is None:
 
             canvas = self.canvas()
@@ -224,17 +256,10 @@ class Drawer():
 
             canvas_drawing = self.canvas()
             canvas_drawing = canvas_drawing.squeeze(0).detach().cpu()
+            fig, axes = plt.subplots(1, 2, figsize=(30, 10))
 
-            other_image = other_image.detach().cpu()
-            fig, axes = plt.subplots(1, 3, figsize=(30, 10))
-
-            canvas = ~( (other_image<0) + (canvas_drawing<0.5) )
-            canvas = canvas.detach().cpu()
-
-            axes[0].imshow(canvas, cmap='grey')
-            axes[0].scatter(self.stroke[-1, 0].detach().cpu(), self.stroke[-1, 1].detach().cpu())
-            axes[1].imshow(canvas_drawing, cmap='grey')
-            axes[2].imshow(other_image, cmap='grey')
+            axes[0].imshow(canvas_drawing, cmap='grey')
+            axes[1].imshow(-other_image.detach().cpu(), cmap='grey')
 
             plt.tight_layout()
             plt.show()
@@ -334,23 +359,12 @@ if __name__ == "__main__":
 
 
     torch.autograd.set_detect_anomaly(True)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     transforms = transforms.Compose([transforms.ToTensor()])
     dataset = ImageFolder(root='dataset_images/', transform=transforms)
 
     image,_ = dataset[0]
-    canny = Canvas(image).layers[1, :, :]
-    canny = torch.tensor(canny, device=device).squeeze(0)
-
-    drawer = Drawer(edge_image=canny)
-    
-    for _ in range(200):
-        complete = drawer.trace_edge()
-        if complete:
-            break
-        
-        
-    drawer.render(other_image=canny)
-    
+    canvas = Canvas(image)
+    canvas.trace_layer(1)
+    canvas.render_strokes()
     
     

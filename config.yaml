@@ -1,8 +1,8 @@
 
 
 prefered_line:
-  search_radius_min: 20
-  search_radius_max: 25
+  search_radius_min: 25
+  search_radius_max: 30
   sigma: 3e-3
   radius: 3e-3
   magnatude: -1
