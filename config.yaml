@@ -1,10 +1,23 @@
 
 
 prefered_line:
-  search_radius_min: 10
-  search_radius_max: 12
+  search_radius_min: 25
+  search_radius_max: 30
   sigma: 3e-3
   radius: 3e-3
+  magnatude: -1
+
+filter:
+  size_threshold: 300
+  density_threshold: 17.25
+  interpolation_scaler: 4
+  ex_dog:
+    tau: 0.99
+    epsilon: 0.0
+    phi: 100
+    sigma: 1.0
+    threshold: 0.05
+    k: 1.6
 
 paths:
   dataset: "dataset_images/"

@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader, Dataset
 import filter
 import kornia.contrib
 from scipy.ndimage import distance_transform_edt
+import matplotlib.pyplot as plt
 import numpy as np
 
 @torch.compile
@@ -129,23 +130,21 @@ def render_sdf(stroke: torch.Tensor, height: int, width: int, raw_sdf: bool) -> 
 
 
 
-def render_sdf_batched(strokes: torch.Tensor, height: int, width: int, raw_sdf: bool) -> torch.Tensor:
+def render_sdf_batched(strokes: list, height: int, width: int, raw_sdf: bool) -> torch.Tensor:
 
-    line_count = strokes.shape[1]
-    batch_size = strokes.shape[0]
-    all_canvas = torch.ones(batch_size, 1, height, width).to(device=strokes.device)
+    canvas = torch.zeros((height, width), device=strokes[0].device)
+    for stroke in strokes:
+        partial_canvas = render_sdf(stroke, height, width, raw_sdf=False)
+        partial_canvas = partial_canvas.squeeze(0)
 
-    if line_count == 1:
-        all_canvas = torch.func.vmap(
-        lambda stroke: render_point_sdf(stroke, height, width, raw_sdf)
-        )(strokes)
+        print(partial_canvas.shape)
 
-    elif line_count > 1:
-        all_canvas = torch.func.vmap(
-        lambda stroke: render_lines_sdf(stroke, height, width, raw_sdf)
-        )(strokes)
+        #TODO why this blank
+        plt.imshow(partial_canvas.detach().cpu(), cmap="grey")
+        plt.show()
 
-    return all_canvas
+
+    return canvas
 
 
 def image_to_sdf(image: torch.Tensor, threshold: float = 0.5) -> torch.Tensor:

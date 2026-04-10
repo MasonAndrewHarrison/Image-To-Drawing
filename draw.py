@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
-from differentiable_rasterizer import render_sdf, image_to_sdf
+from differentiable_rasterizer import render_sdf, image_to_sdf, render_sdf_batched
 from utils import *
 from torchvision import datasets, transforms
 from torchvision.datasets import ImageFolder
@@ -12,29 +12,118 @@ import yaml
 import random
 import time
 
+#TODO rewrite everything in taichi
 
-#TODO rewrite everything in taichi, c or c++
+
+class Canvas():
+
+    def __init__(self, image):
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        _, height, width = image.shape
+        image = image.mean(0).unsqueeze(0).unsqueeze(0).to(device)
+        
+        with open("config.yaml", "r") as f:
+            config = yaml.safe_load(f)
+        filter_config = config["filter"]
+
+        self.size_threshold = filter_config["size_threshold"]
+        self.density_threshold = float(filter_config["density_threshold"])
+        self.scaler = filter_config["interpolation_scaler"]
+
+        ex_dog_config = filter_config["ex_dog"]
+        ex_dog = filter.ex_difference_of_gaussians(
+            image=image,
+            tau=float(ex_dog_config["tau"]),
+            epsilon=float(ex_dog_config["epsilon"]),
+            phi=float(ex_dog_config["phi"]),
+            sigma=float(ex_dog_config["sigma"]),
+            threshold=float(ex_dog_config["threshold"]),
+            k=float(ex_dog_config["k"]),
+        )
+        
+        ex_dog = F.interpolate(
+            ex_dog.float(),
+            size=[height*self.scaler, width*self.scaler],
+            mode="bicubic",
+            align_corners=False
+        ).squeeze(0).squeeze(0)
+        binary = (ex_dog < 0.5).to(torch.uint8)
+
+        self.height = binary.shape[0]
+        self.width = binary.shape[1]
+
+        data = separate_pixels(binary)
+        data = filter_noise(
+            *data, 
+            size_threshold=self.size_threshold
+        )
+        num_labels, labels,_ = density_filter(
+            *data, 
+            density_threshold=self.density_threshold
+        )
+
+        layers = separate_to_layers(num_labels, labels)
+        self.layers = torch.tensor(layers, device=device)
+        self.strokes = []
+
+    def colapsed_layers(self):
+    
+        return self.layers.sum(axis=0)
+
+    def trace_layer(self, index):
+
+        layer = self.layers[index, :, :]
+        drawer = Drawer(edge_image=layer)
+
+        for _ in range(200):
+            complete, left_over_layer = drawer.trace_edge()
+            if complete:
+                break
+
+        drawer.reverse_order()
+
+        for _ in range(200):
+            complete, left_over_layer = drawer.trace_edge()
+            if complete:
+                break
+
+        self.strokes.append(drawer.stroke)
+        
+        if left_over_layer.sum() != 0:
+            self.layers[index, :, :] = left_over_layer
+            self.trace_layer(index)
+
+    def trace_all_layer(self):
+
+        ...
+
+    def render_strokes(self):
+
+        render_sdf_batched(self.strokes, self.height, self.width, False)
+
 
 
 class Drawer():
 
-    def __init__(self, edge_image, interpolation_mode: str = 'bicubic'):
+    def __init__(self, edge_image=None, negative_sdf=None):
         
-        self.device = edge_image.device
-        height = edge_image.shape[0]
-        width = edge_image.shape[1]
+        if edge_image is not None:
 
-        intpol_edge_image = F.interpolate(
-            edge_image.unsqueeze(0).unsqueeze(0).float(),
-            size=[height*3, width*3],
-            mode="bicubic",
-            align_corners=False
-        ).squeeze(0).squeeze(0)
+            self.device = edge_image.device
+            self.height = edge_image.shape[0]
+            self.width = edge_image.shape[1]
 
-        self.height = height * 3
-        self.width = width * 3
-        self.negative_sdf = image_to_negative_sdf(intpol_edge_image.unsqueeze(0)).squeeze(0)
-        self.interpolation_mode = interpolation_mode
+            binary = edge_image < 0.5
+            self.negative_sdf = image_to_negative_sdf(binary.unsqueeze(0)).squeeze(0)
+
+        elif negative_sdf is not None:
+
+            self.device = negative_sdf.device
+            self.height = negative_sdf.shape[0]
+            self.width = negative_sdf.shape[1]
+            self.negative_sdf = negative_sdf
 
         with open("config.yaml", "r") as f:
             config = yaml.safe_load(f)
@@ -44,52 +133,16 @@ class Drawer():
         self.search_r_max = line_preference["search_radius_max"]
         self.prefered_sigma = float(line_preference["sigma"])
         self.prefered_radius = float(line_preference["radius"])
+        self.magnatude = float(line_preference["magnatude"])
         self.stroke = torch.zeros(0, 4, device=self.device)
-
-    def trace_edge_using_grad(self) -> bool:
-
-        points_in_stroke = self.stroke.shape[0]
-
-        if points_in_stroke < 1:
-            new_point = torch.tensor(
-                [
-                    self.width / 2, 
-                    self.height / 2, 
-                    self.prefered_sigma, 
-                    self.prefered_radius,
-                ]
-                , device=self.device
-            ).unsqueeze(0)
-            self.draw(new_point)
-        else:
-            last_point = self.stroke[-1, :].unsqueeze(0)
-            self.draw(last_point)
-
-        point_dist, point = self.all_points_from_image()
-
-        raw_grad = torch.autograd.grad(point_dist.sum(), point)[0]
-        direction = raw_grad / (raw_grad.norm(dim=-1, keepdim=True) + 1e-8)
-
-        line_distance = self.prefered_distance
-        if points_in_stroke < 1:
-            line_distance = point_dist[-1]
-        scaled_grad = direction * line_distance
-
-        with torch.no_grad():
-            point -= scaled_grad
-
-        self.stroke[-1, 0:2] = point[-1, :]
-        self.update_edge_image(new_point=point[-1, :].detach())
-        is_complete = False
-
-        return is_complete
 
     def trace_edge(self):
 
         points_in_stroke = self.stroke.shape[0]
         is_complete = False
+        first_stroke = points_in_stroke < 1
 
-        if points_in_stroke < 1:
+        if first_stroke:
             new_point = torch.tensor(
                 [
                     self.width / 2, 
@@ -104,12 +157,15 @@ class Drawer():
             last_point = self.stroke[-1, :].unsqueeze(0)
             self.draw(last_point)
 
+
+        search_radius = self.search_r_max if not first_stroke else -1
+
         last_point = self.stroke[-1, 0:2]
         vector = vec_to_lowest_point(
             self.negative_sdf, 
             position=last_point, 
-            magnatude=-1,
-            search_radius=self.search_r_max
+            magnatude=self.magnatude,
+            search_radius=search_radius
         )
         if vector[0] == 0 and vector[1] == 0:
             is_complete = True
@@ -118,9 +174,9 @@ class Drawer():
             self.update_negative_sdf(new_point)
             self.stroke[-1, 0:2] = new_point
             
-
+        left_over_layer = (self.negative_sdf != 0)
         
-        return is_complete
+        return (is_complete, left_over_layer)
         
 
     def update_negative_sdf(self, new_point):
@@ -128,6 +184,10 @@ class Drawer():
         H, W = self.negative_sdf.shape
         x, y = torch.unbind(new_point, dim=0)
         radius = self.search_r_min
+        padding = self.search_r_max + 1
+  
+        x = torch.clip(x, padding, W - padding)
+        y = torch.clip(y, padding, H - padding)
 
         x_start = torch.clip(x - radius, 0, W).__int__()
         x_end = torch.clip(x + radius, 0, W).__int__()
@@ -136,29 +196,8 @@ class Drawer():
 
         mask = ~create_circle_mask(radius, device=self.device)
 
-        self.negative_sdf[y_start:y_end, x_start:x_end] = torch.where(mask, self.negative_sdf[y_start:y_end, x_start:x_end], 0)
-
-    def update_edge_image(self, new_point):
-
-        H, W = self.edge_image.shape
-        x, y = torch.unbind(new_point, dim=0)
-
-        standard_devation = 1e-6
-        brownian_motion = torch.randn(2, device=self.device) * standard_devation
-        x_epsilon = brownian_motion[0]
-        y_epsilon = brownian_motion[1]
-
-        x, y = x + x_epsilon, y + y_epsilon
-
-        pixel_y, pixel_x = torch.meshgrid(
-            torch.arange(H, device=self.device),
-            torch.arange(W, device=self.device),
-            indexing='ij'
-        )
-        sdf = torch.sqrt((pixel_x - x)**2 + (pixel_y - y)**2 + 1e-8)
-        mask = sdf > self.prefered_distance
-
-        self.edge_image = torch.where(mask, self.edge_image, 1)
+        updated_patch = torch.where(mask, self.negative_sdf[y_start:y_end, x_start:x_end], 0)
+        self.negative_sdf[y_start:y_end, x_start:x_end] = updated_patch
 
     def get_stroke(self, use_empty_buffer: bool = False, new_graph: bool = True):
 
@@ -190,49 +229,6 @@ class Drawer():
     def draw(self, new_stroke):
 
         self.stroke = torch.concat([self.stroke, new_stroke], dim=0)
-        
-
-    def point_from_sdf(self, sdf, stroke_index):
-
-        point = self.stroke[stroke_index, 0:2].unsqueeze(0).clone()
-        point = point.detach().requires_grad_(True)
-        distance = points_from_sdf(image_sdf=sdf, positions=point)
-
-        return (distance, point)
-
-
-    def all_points_from_sdf(self, sdf):
-
-        point = self.stroke[:, 0:2].clone()
-        point = point.detach().requires_grad_(True)
-        distance = points_from_sdf(image_sdf=sdf, positions=point)
-
-        return (distance, point)
-
-    
-    def point_from_image(self, index: int = -1):
-
-        point = self.stroke[index, 0:2].clone()
-        point = point.detach().requires_grad_(True)
-        distance = faster_point_from_image(
-            edge_image=self.edge_image, 
-            position=point,
-        )
-
-        return (distance, point)
-
-    
-    def all_points_from_image(self):
-
-        point = self.stroke[:, 0:2].clone()
-        point = point.detach().requires_grad_(True)
-        distance = points_from_image(
-            edge_image=self.edge_image, 
-            positions=point,
-            interpolation_mode=self.interpolation_mode
-        )
-
-        return (distance, point)
 
 
     def canvas(self, raw_sdf: bool = False):
@@ -248,8 +244,6 @@ class Drawer():
 
     def render(self, other_image=None):
 
-        other_image=self.negative_sdf
-
         if other_image is None:
 
             canvas = self.canvas()
@@ -262,17 +256,10 @@ class Drawer():
 
             canvas_drawing = self.canvas()
             canvas_drawing = canvas_drawing.squeeze(0).detach().cpu()
+            fig, axes = plt.subplots(1, 2, figsize=(30, 10))
 
-            other_image = other_image.detach().cpu()
-            fig, axes = plt.subplots(1, 3, figsize=(30, 10))
-
-            canvas = ~( (other_image<0) + (canvas_drawing<0.5) )
-            canvas = canvas.detach().cpu()
-
-            axes[0].imshow(canvas, cmap='grey')
-            axes[0].scatter(self.stroke[-1, 0].detach().cpu(), self.stroke[-1, 1].detach().cpu())
-            axes[1].imshow(canvas_drawing, cmap='grey')
-            axes[2].imshow(other_image, cmap='grey')
+            axes[0].imshow(canvas_drawing, cmap='grey')
+            axes[1].imshow(-other_image.detach().cpu(), cmap='grey')
 
             plt.tight_layout()
             plt.show()
@@ -362,24 +349,6 @@ class Drawer():
         )
 
         return angle
-
-
-    def forget_graph(self):
-
-        self.stroke = self.stroke.detach()
-
-    def debug_printout(self):
-
-        print(f"Largest x: {self.stroke[:, 0].max():.4f} < {self.width}\n"
-            f"Smallest x: {self.stroke[:, 0].min():.4f} > {0}\n"
-            f"Largest y: {self.stroke[:, 1].max():.4f} < {self.height}\n"
-            f"Smallest y: {self.stroke[:, 1].min():.4f} > {0}\n"
-            f"Largest sigma: {self.stroke[:, 2].max():.4f} ~= {self.prefered_sigma}\n"
-            f"Smallest sigma: {self.stroke[:, 2].min():.4f} ~= {self.prefered_sigma}\n"
-            f"Largest radius: {self.stroke[:, 3].max():.4f} ~= {self.prefered_radius}\n"
-            f"Smallest radius: {self.stroke[:, 3].min():.4f} ~= {self.prefered_radius}\n"
-            f"Average Distance: {self.avg_distance().item():.4f} ~= {self.prefered_distance}\n"
-        )
         
     def shape(self):
         
@@ -388,26 +357,14 @@ class Drawer():
 
 if __name__ == "__main__":
 
+
     torch.autograd.set_detect_anomaly(True)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     transforms = transforms.Compose([transforms.ToTensor()])
     dataset = ImageFolder(root='dataset_images/', transform=transforms)
 
     image,_ = dataset[0]
-    _, height, width = image.shape
-    image = image.mean(0).unsqueeze(0).unsqueeze(0).to(device)
-    canny = filter.ex_difference_of_gaussians(image).squeeze(0).squeeze(0)
-    sdf = image_to_sdf(canny).squeeze(0)
-
-    drawer = Drawer(edge_image=canny)
-    
-    for _ in range(30):
-        complete = drawer.trace_edge()
-        if complete:
-            break
-        
-        
-    drawer.render(other_image=canny)
-    
+    canvas = Canvas(image)
+    canvas.trace_layer(1)
+    canvas.render_strokes()
     
     
